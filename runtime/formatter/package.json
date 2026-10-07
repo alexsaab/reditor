@@ -1,0 +1,9 @@
+{
+  "name": "reditor-formatter-tools",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Optional Prettier runtime for reditor",
+  "dependencies": {
+    "prettier": "3.9.0"
+  }
+}

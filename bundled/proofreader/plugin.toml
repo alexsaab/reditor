@@ -1,0 +1,35 @@
+name = "proofreader"
+api_version = 1
+entry = "main.lua"
+icon = "PR"
+capabilities = ["proofread"]
+
+[[commands]]
+id = "proofreader.auto"
+title = "Check spelling and grammar (detect language)"
+titles = { ru = "Проверить текст (определить язык)", en = "Check text (detect language)", de = "Text prüfen (Sprache erkennen)", es = "Revisar texto (detectar idioma)" }
+
+[[commands]]
+id = "proofreader.current"
+title = "Check spelling and grammar (interface language)"
+titles = { ru = "Проверить текст (язык интерфейса)", en = "Check text (interface language)", de = "Text prüfen (Sprache der Oberfläche)", es = "Revisar texto (idioma de la interfaz)" }
+
+[[commands]]
+id = "proofreader.ru"
+title = "Check Russian text"
+titles = { ru = "Проверить русский текст", en = "Check Russian text", de = "Russischen Text prüfen", es = "Revisar texto ruso" }
+
+[[commands]]
+id = "proofreader.en"
+title = "Check English text"
+titles = { ru = "Проверить английский текст", en = "Check English text", de = "Englischen Text prüfen", es = "Revisar texto inglés" }
+
+[[commands]]
+id = "proofreader.de"
+title = "Check German text"
+titles = { ru = "Проверить немецкий текст", en = "Check German text", de = "Deutschen Text prüfen", es = "Revisar texto alemán" }
+
+[[commands]]
+id = "proofreader.es"
+title = "Check Spanish text"
+titles = { ru = "Проверить испанский текст", en = "Check Spanish text", de = "Spanischen Text prüfen", es = "Revisar texto español" }

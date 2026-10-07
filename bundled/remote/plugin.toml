@@ -1,0 +1,36 @@
+name = "remote"
+api_version = 1
+entry = "main.lua"
+capabilities = ["remote"]
+[[commands]]
+id = "remote.connect"
+title = "Connect to server"
+titles = { ru = "Подключиться к серверу", en = "Connect to server", de = "Mit Server verbinden", es = "Conectar al servidor" }
+[[commands]]
+id = "remote.browse"
+title = "Browse remote directory"
+titles = { ru = "Открыть удалённый каталог", en = "Browse remote directory", de = "Remote-Verzeichnis öffnen", es = "Abrir directorio remoto" }
+[[commands]]
+id = "remote.upload"
+title = "Save on server"
+titles = { ru = "Сохранить на сервере", en = "Save on server", de = "Auf Server speichern", es = "Guardar en servidor" }
+[[commands]]
+id = "remote.reload"
+title = "Reload from server"
+titles = { ru = "Перечитать с сервера", en = "Reload from server", de = "Vom Server neu laden", es = "Recargar del servidor" }
+[[commands]]
+id = "remote.mkdir"
+title = "Create remote directory"
+titles = { ru = "Создать удалённый каталог", en = "Create remote directory", de = "Remote-Verzeichnis erstellen", es = "Crear directorio remoto" }
+[[commands]]
+id = "remote.new_file"
+title = "Create remote file"
+titles = { ru = "Создать удалённый файл", en = "Create remote file", de = "Remote-Datei erstellen", es = "Crear archivo remoto" }
+[[commands]]
+id = "remote.settings.project"
+title = "Project connections"
+titles = { ru = "Подключения проекта", en = "Project connections", de = "Projektverbindungen", es = "Conexiones del proyecto" }
+[[commands]]
+id = "remote.settings.user"
+title = "User connections"
+titles = { ru = "Подключения пользователя", en = "User connections", de = "Benutzerverbindungen", es = "Conexiones del usuario" }

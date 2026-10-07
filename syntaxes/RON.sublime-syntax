@@ -1,0 +1,37 @@
+%YAML 1.2
+---
+name: RON
+file_extensions: [ron]
+scope: source.ron
+contexts:
+  main:
+    - match: '//.*$'
+      scope: comment.line.double-slash.ron
+    - match: '/\*'
+      scope: punctuation.definition.comment.ron
+      push: comment
+    - match: '"'
+      scope: punctuation.definition.string.begin.ron
+      push: string
+    - match: '\b(true|false|None|Some)\b'
+      scope: constant.language.ron
+    - match: '\b(?:0x[0-9a-fA-F_]+|0b[01_]+|[0-9][0-9_]*(?:\.[0-9_]+)?(?:[eE][+-]?[0-9]+)?)\b'
+      scope: constant.numeric.ron
+    - match: '\b[A-Z][A-Za-z0-9_]*\b'
+      scope: entity.name.type.ron
+    - match: '\b[A-Za-z_][A-Za-z0-9_]*(?=\s*:)'
+      scope: variable.other.member.ron
+    - match: '[()\[\]{},:]'
+      scope: punctuation.ron
+  comment:
+    - meta_scope: comment.block.ron
+    - match: '/\*'
+      push: comment
+    - match: '\*/'
+      pop: true
+  string:
+    - meta_scope: string.quoted.double.ron
+    - match: '\\.'
+      scope: constant.character.escape.ron
+    - match: '"'
+      pop: true

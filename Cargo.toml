@@ -1,0 +1,39 @@
+[package]
+name = "reditor"
+version = "0.4.0"
+edition = "2024"
+rust-version = "1.90"
+description = "A multilingual Rust terminal editor with Lua and JavaScript/TypeScript plugins"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+crossterm = "0.29"
+ratatui = "0.30.2"
+ropey = "1.6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.9"
+mlua = { version = "0.11", features = ["lua54", "vendored", "serialize", "error-send"] }
+syntect = "5.3"
+two-face = { version = "0.5", features = ["syntect-default-onig"] }
+tempfile = "3"
+unicode-width = "0.2"
+arboard = { version = "3", default-features = false }
+pulldown-cmark = { version = "0.13", default-features = false }
+unicode-segmentation = "1.13"
+image = { version = "0.25", default-features = false, features = ["png"] }
+ratatui-image = { version = "11.1", default-features = false, features = ["crossterm"] }
+portable-pty = "0.9"
+vt100 = "0.16"
+url = "2"
+ignore = "0.4"
+ssh2 = { version = "0.9", features = ["vendored-openssl"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[profile.release]
+lto = "thin"
+strip = true

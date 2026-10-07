@@ -1,0 +1,5 @@
+name = "Header (JavaScript)"
+entry = "main.js"
+[[commands]]
+id = "header"
+title = "Insert reditor header"

@@ -1,0 +1,6 @@
+target/
+.reditor/
+*.swp
+.DS_Store
+node_modules/
+.browsers/

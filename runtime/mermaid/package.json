@@ -1,0 +1,15 @@
+{
+  "name": "reditor-mermaid-runtime",
+  "private": true,
+  "scripts": {
+    "build": "esbuild entry.mjs --bundle --format=iife --global-name=ReditorMermaid --minify --legal-comments=external --outfile=../../assets/mermaid.min.js",
+    "test": "node browser-test.mjs"
+  },
+  "dependencies": {
+    "esbuild": "0.28.2",
+    "mermaid": "11.17.2"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

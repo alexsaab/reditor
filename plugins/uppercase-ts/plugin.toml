@@ -1,0 +1,5 @@
+name = "Uppercase (TypeScript)"
+entry = "main.ts"
+[[commands]]
+id = "uppercase"
+title = "Convert text to uppercase"

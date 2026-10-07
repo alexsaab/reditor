@@ -1,0 +1,26 @@
+name = "git"
+api_version = 1
+entry = "main.lua"
+capabilities = ["git"]
+[[commands]]
+id = "git.status"
+title = "Git status"
+titles = { ru = "Состояние Git", en = "Git status", de = "Git-Status", es = "Estado de Git" }
+[[commands]]
+id = "git.diff"
+title = "Git diff"
+titles = { ru = "Изменения Git", en = "Git diff", de = "Git-Änderungen", es = "Cambios de Git" }
+[[commands]]
+id = "git.stage"
+title = "Stage file"
+titles = { ru = "Добавить файл в индекс", en = "Stage file", de = "Datei vormerken", es = "Preparar archivo" }
+[[commands]]
+id = "git.commit"
+title = "Create commit"
+titles = { ru = "Создать коммит", en = "Create commit", de = "Commit erstellen", es = "Crear commit" }
+[[commands]]
+id = "git.log"
+title = "Commit history"
+titles = { ru = "История коммитов", en = "Commit history", de = "Commit-Verlauf", es = "Historial de commits" }
+[settings]
+log_limit = 50

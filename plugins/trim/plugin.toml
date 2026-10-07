@@ -1,0 +1,6 @@
+name = "Trim whitespace (Lua)"
+entry = "main.lua"
+hooks = ["before_save"]
+[[commands]]
+id = "trim"
+title = "Trim trailing whitespace"

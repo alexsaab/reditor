@@ -1,0 +1,18 @@
+name = "formatter"
+api_version = 1
+entry = "main.lua"
+icon = "FM"
+capabilities = ["format"]
+[[commands]]
+id = "formatter.format"
+title = "Format current file"
+key = "Alt+Shift+f"
+titles = { ru = "Форматировать файл", en = "Format current file", de = "Datei formatieren", es = "Formatear archivo" }
+[[commands]]
+id = "formatter.check"
+title = "Check formatting"
+titles = { ru = "Проверить форматирование", en = "Check formatting", de = "Formatierung prüfen", es = "Comprobar formato" }
+[[commands]]
+id = "formatter.on_save"
+title = "Toggle format on save"
+titles = { ru = "Форматировать при сохранении: вкл./выкл.", en = "Toggle format on save", de = "Formatieren beim Speichern umschalten", es = "Activar/desactivar formato al guardar" }

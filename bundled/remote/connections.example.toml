@@ -1,0 +1,32 @@
+# FTP / SFTP / FTPS profiles. Uncomment and fill in a profile.
+# Common: ~/.reditor/connections.toml; project: .reditor/connections.toml.
+# Project fields override common fields with the same connection name.
+# Paths are relative to this configuration directory; ~ means the user home.
+
+# [connections.my_sftp]
+# protocol = "sftp"
+# host = "example.org"
+# port = 22
+# user = "developer"
+# root = "/var/www"
+# key_file = "~/.ssh/id_ed25519"
+# known_hosts = "~/.ssh/known_hosts"
+# Without key_file/password_env, authentication uses the SSH agent.
+# password_env = "REDITOR_SFTP_PASSWORD"
+# key_passphrase_env = "REDITOR_KEY_PASSPHRASE"
+
+# [connections.my_ftps]
+# protocol = "ftps"
+# host = "example.org"
+# user = "developer"
+# root = "/public_html"
+# password_env = "REDITOR_FTPS_PASSWORD"
+# implicit_tls = false  # false: explicit TLS/port 21; true: implicit TLS/port 990
+# ca_file = "certificates/server-ca.pem" # optional private CA
+
+# [connections.my_ftp]
+# protocol = "ftp"
+# host = "example.org"
+# user = "developer"
+# root = "/public_html"
+# password_env = "REDITOR_FTP_PASSWORD"

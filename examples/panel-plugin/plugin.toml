@@ -1,0 +1,11 @@
+api_version = 1
+name = "Statistics"
+entry = "main.lua"
+
+[settings]
+title = "Статистика документа"
+
+[[commands]]
+id = "statistics"
+title = "Статистика документа"
+key = "Alt+s"

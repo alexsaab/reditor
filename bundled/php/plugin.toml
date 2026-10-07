@@ -1,0 +1,27 @@
+name = "php"
+api_version = 1
+entry = "main.lua"
+capabilities = ["php"]
+[[commands]]
+id = "php.lint"
+title = "Check PHP syntax"
+titles = { ru = "Проверить синтаксис PHP", en = "Check PHP syntax", de = "PHP-Syntax prüfen", es = "Comprobar sintaxis PHP" }
+[[commands]]
+id = "php.run"
+title = "Run PHP"
+titles = { ru = "Запустить PHP", en = "Run PHP", de = "PHP ausführen", es = "Ejecutar PHP" }
+[[commands]]
+id = "php.server"
+title = "Local PHP server"
+titles = { ru = "Локальный PHP-сервер", en = "Local PHP server", de = "Lokaler PHP-Server", es = "Servidor PHP local" }
+[[commands]]
+id = "php.template"
+title = "PHP file template"
+titles = { ru = "Шаблон PHP-файла", en = "PHP file template", de = "PHP-Dateivorlage", es = "Plantilla de archivo PHP" }
+[[commands]]
+id = "php.outline"
+title = "PHP classes and functions"
+titles = { ru = "Классы и функции PHP", en = "PHP classes and functions", de = "PHP-Klassen und Funktionen", es = "Clases y funciones PHP" }
+[settings]
+php_binary = "php"
+port = 8080
