@@ -19,11 +19,13 @@ use unicode_width::UnicodeWidthStr;
 #[path = "workspace_ui.rs"]
 mod workspace_ui;
 
-const BG: Color = Color::Rgb(17, 23, 34);
-const PANEL: Color = Color::Rgb(23, 31, 45);
-const TEXT: Color = Color::Rgb(212, 222, 239);
-const MUTED: Color = Color::Rgb(113, 132, 160);
-const ACCENT: Color = Color::Rgb(76, 207, 176);
+const BG: Color = Color::Rgb(30, 30, 30);
+const PANEL: Color = Color::Rgb(37, 37, 38);
+const TEXT: Color = Color::Rgb(204, 204, 204);
+const MUTED: Color = Color::Rgb(133, 133, 133);
+const ACCENT: Color = Color::Rgb(86, 156, 214);
+const STATUS: Color = Color::Rgb(0, 122, 204);
+const SELECTED: Color = Color::Rgb(4, 57, 94);
 const ERROR: Color = Color::Rgb(255, 124, 137);
 
 #[derive(PartialEq, Eq)]
@@ -106,16 +108,41 @@ impl Renderer {
         let rows = Layout::vertical([
             Constraint::Length(1),
             Constraint::Length(1),
-            Constraint::Min(3),
             Constraint::Length(1),
+            Constraint::Min(3),
             Constraint::Length(1),
         ])
         .split(area);
-        let mut menu_x = rows[0].x;
+        frame.render_widget(Block::default().style(Style::default().bg(PANEL)), rows[0]);
+        let project = app.root.file_name().unwrap_or_default().to_string_lossy();
+        let brand = format!(" 🦀 reditor  │  {project} ");
+        frame.render_widget(
+            Paragraph::new(brand).style(Style::default().fg(TEXT).bg(PANEL)),
+            Rect::new(rows[0].x, rows[0].y, rows[0].width.min(36), 1),
+        );
+        let brand_width = rows[0].width.min(36);
+        let available = rows[0].width.saturating_sub(brand_width + 2);
+        if available >= 20 {
+            let command_width = available.min(36);
+            let command_x = rows[0].x + brand_width + 1 + (available - command_width) / 2;
+            let command_hit = Rect::new(command_x, rows[0].y, command_width, 1);
+            frame.render_widget(
+                Paragraph::new("⌕  Search files  Ctrl+P").style(Style::default().fg(MUTED).bg(BG)),
+                command_hit,
+            );
+            self.mouse.areas.toolbar.push((
+                command_hit,
+                KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL),
+            ));
+        }
+        let mut menu_x = rows[1].x;
         for (index, name) in crate::app::MENU_NAMES.iter().enumerate() {
+            if menu_x >= rows[1].right() {
+                break;
+            }
             let label = format!(" {name} ");
-            let width = label.width() as u16;
-            let hit = Rect::new(menu_x, rows[0].y, width, 1);
+            let width = (label.width() as u16).min(rows[1].right() - menu_x);
+            let hit = Rect::new(menu_x, rows[1].y, width, 1);
             let active_menu =
                 matches!(app.dialog, Some(Dialog::Menu { menu, .. }) if menu == index);
             frame.render_widget(
@@ -163,22 +190,25 @@ impl Renderer {
                 .iter()
                 .map(|t| t.width() + 3)
                 .sum::<usize>()
-                > rows[1].width as usize
+                > rows[2].width as usize
         {
             self.tab_start += 1;
         }
-        frame.render_widget(Block::default().style(Style::default().bg(PANEL)), rows[1]);
-        let mut x = rows[1].x;
+        frame.render_widget(Block::default().style(Style::default().bg(PANEL)), rows[2]);
+        let mut x = rows[2].x;
         for (index, title) in titles.iter().enumerate().skip(self.tab_start) {
-            if x >= rows[1].right() {
+            if x >= rows[2].right() {
                 break;
             }
-            let width = (title.width() + 2).min((rows[1].right() - x) as usize) as u16;
-            let hit = Rect::new(x, rows[1].y, width, 1);
+            let width = (title.width() + 2).min((rows[2].right() - x) as usize) as u16;
+            let hit = Rect::new(x, rows[2].y, width, 1);
             let style = if index == app.active {
-                Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(TEXT)
+                    .bg(BG)
+                    .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(MUTED)
+                Style::default().fg(MUTED).bg(PANEL)
             };
             let mut padded = title.clone();
             padded.spans.insert(0, Span::raw(" "));
@@ -186,34 +216,34 @@ impl Renderer {
             frame.render_widget(Paragraph::new(padded).style(style), hit);
             self.mouse.areas.tabs.push((hit, index));
             x += width;
-            if x < rows[1].right() {
+            if x < rows[2].right() {
                 frame.render_widget(
                     Paragraph::new("│").style(Style::default().fg(MUTED)),
-                    Rect::new(x, rows[1].y, 1, 1),
+                    Rect::new(x, rows[2].y, 1, 1),
                 );
                 x += 1;
             }
         }
-        let workspace = if app.studio.bottom_visible && rows[2].height >= 10 {
+        let workspace = if app.studio.bottom_visible && rows[3].height >= 10 {
             let parts = Layout::vertical([
                 Constraint::Min(5),
                 Constraint::Length(
                     app.studio
                         .bottom_height
-                        .min(rows[1].height.saturating_sub(5)),
+                        .min(rows[3].height.saturating_sub(5)),
                 ),
             ])
-            .split(rows[2]);
+            .split(rows[3]);
             self.resize_border(
                 Rect::new(parts[1].x, parts[1].y, parts[1].width, 1),
                 workspace_ui::ResizeKind::Terminal,
-                rows[2],
+                rows[3],
                 parts[1].height,
             );
             self.bottom(frame, app, parts[1]);
             parts[0]
         } else {
-            rows[2]
+            rows[3]
         };
         let rail =
             Layout::horizontal([Constraint::Length(6), Constraint::Min(10)]).split(workspace);
@@ -271,7 +301,7 @@ impl Renderer {
             Constraint::Min(0),
             Constraint::Length(position.width() as u16),
         ])
-        .split(rows[3]);
+        .split(rows[4]);
         let status = if app.build.is_some() {
             app.i18n.t("running")
         } else {
@@ -285,43 +315,15 @@ impl Renderer {
         frame.render_widget(
             Paragraph::new(format!(" {status}")).style(
                 Style::default()
-                    .bg(PANEL)
+                    .bg(STATUS)
                     .fg(if app.status_error { ERROR } else { TEXT }),
             ),
             status_columns[0],
         );
         frame.render_widget(
-            Paragraph::new(position).style(Style::default().bg(ACCENT).fg(BG)),
+            Paragraph::new(position).style(Style::default().bg(STATUS).fg(Color::White)),
             status_columns[1],
         );
-        let brand = " reditor 🦀 │ ";
-        frame.render_widget(
-            Paragraph::new(brand).style(Style::default().fg(MUTED)),
-            rows[4],
-        );
-        let mut x = rows[4].x + (brand.width() as u16).min(rows[4].width);
-        let keys = [
-            KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL),
-            KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL),
-            KeyEvent::new(KeyCode::Char('e'), KeyModifiers::CONTROL),
-            KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL),
-            KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE),
-            KeyEvent::new(KeyCode::F(2), KeyModifiers::NONE),
-        ];
-        for (label, key) in app.i18n.t("footer").split("  ").zip(keys) {
-            if x >= rows[4].right() {
-                break;
-            }
-            let label = format!(" {label} ");
-            let width = (label.width() as u16).min(rows[4].right() - x);
-            let hit = Rect::new(x, rows[4].y, width, 1);
-            frame.render_widget(
-                Paragraph::new(label).style(Style::default().fg(ACCENT).bg(PANEL)),
-                hit,
-            );
-            self.mouse.areas.toolbar.push((hit, key));
-            x += width + 1;
-        }
         if app.dialog.is_some() {
             self.dialog(frame, app);
         }
@@ -343,26 +345,29 @@ impl Renderer {
         self.mouse.handle(app, event);
     }
     fn explorer(&mut self, frame: &mut Frame, app: &mut App, area: Rect) {
-        let title = format!(
-            " {} {} ",
-            if app.explorer_focus { "▸" } else { " " },
-            app.i18n.t("files")
-        );
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .title(title)
-            .border_style(Style::default().fg(if app.explorer_focus { ACCENT } else { MUTED }));
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
-        let rows = Layout::vertical([Constraint::Length(2), Constraint::Min(0)]).split(inner);
-        self.mouse.areas.explorer = area;
-        self.mouse.areas.files = rows[1];
-        self.mouse.areas.parent =
-            Rect::new(rows[0].x, rows[0].y, rows[0].width, rows[0].height.min(1));
+        frame.render_widget(Block::default().style(Style::default().bg(PANEL)), area);
+        let rows = Layout::vertical([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Min(0),
+        ])
+        .split(area);
         frame.render_widget(
-            Paragraph::new(format!("↑ ..\n{}", app.directory.to_string_lossy()))
-                .style(Style::default().fg(MUTED)),
+            Paragraph::new(format!("  {}", app.i18n.t("files"))).style(
+                Style::default()
+                    .fg(if app.explorer_focus { TEXT } else { MUTED })
+                    .bg(PANEL)
+                    .add_modifier(Modifier::BOLD),
+            ),
             rows[0],
+        );
+        self.mouse.areas.explorer = area;
+        self.mouse.areas.files = rows[2];
+        self.mouse.areas.parent = rows[1];
+        frame.render_widget(
+            Paragraph::new(format!("⌄  {}", app.directory.to_string_lossy()))
+                .style(Style::default().fg(MUTED).bg(PANEL)),
+            rows[1],
         );
         let items: Vec<ListItem> = app
             .entries
@@ -371,20 +376,16 @@ impl Renderer {
                 let name = entry.path.file_name().unwrap_or_default().to_string_lossy();
                 ListItem::new(format!(
                     "{} {name}{}",
-                    if entry.directory { "▸" } else { "·" },
+                    if entry.directory { "▸" } else { " " },
                     if entry.directory { "/" } else { "" }
                 ))
-                .style(Style::default().fg(if entry.directory {
-                    ACCENT
-                } else {
-                    TEXT
-                }))
+                .style(Style::default().fg(TEXT).bg(PANEL))
             })
             .collect();
         if items.is_empty() {
             frame.render_widget(
                 Paragraph::new(app.i18n.t("empty")).style(Style::default().fg(MUTED)),
-                rows[1],
+                rows[2],
             );
             return;
         }
@@ -393,9 +394,9 @@ impl Renderer {
             .with_selected(Some(app.selected));
         frame.render_stateful_widget(
             List::new(items)
-                .highlight_style(Style::default().bg(PANEL).fg(ACCENT))
+                .highlight_style(Style::default().bg(SELECTED).fg(Color::White))
                 .highlight_symbol("› "),
-            rows[1],
+            rows[2],
             &mut state,
         );
         app.explorer_offset = state.offset();
@@ -405,14 +406,29 @@ impl Renderer {
             .doc()
             .path
             .as_ref()
+            .and_then(|p| p.file_name())
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_else(|| app.i18n.t("untitled").to_owned());
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .title(format!(" {title} "))
-            .border_style(Style::default().fg(if app.explorer_focus { MUTED } else { ACCENT }));
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
+        let parent = app
+            .doc()
+            .path
+            .as_ref()
+            .and_then(|p| p.parent())
+            .and_then(|p| p.file_name())
+            .map(|p| p.to_string_lossy().into_owned());
+        let inner = Rect::new(
+            area.x,
+            area.y.saturating_add(1),
+            area.width,
+            area.height.saturating_sub(1),
+        );
+        frame.render_widget(Block::default().style(Style::default().bg(BG)), area);
+        let breadcrumb =
+            parent.map_or_else(|| title.clone(), |parent| format!("{parent}  ›  {title}"));
+        frame.render_widget(
+            Paragraph::new(format!("  {breadcrumb}")).style(Style::default().fg(MUTED).bg(BG)),
+            Rect::new(area.x, area.y, area.width, 1),
+        );
         if app.doc().can_preview() || app.doc().preview {
             let label = format!(
                 " F7 {} ",
@@ -424,7 +440,7 @@ impl Renderer {
             );
             let width = (label.width() as u16).min(area.width.saturating_sub(2));
             self.mouse.areas.mode_toggle =
-                Rect::new(area.right().saturating_sub(width + 1), area.y, width, 1);
+                Rect::new(area.right().saturating_sub(width), area.y, width, 1);
             frame.render_widget(
                 Paragraph::new(label).style(Style::default().fg(BG).bg(ACCENT)),
                 self.mouse.areas.mode_toggle,
