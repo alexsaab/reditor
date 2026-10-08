@@ -438,7 +438,7 @@ impl App {
                         .collect(),
                 );
             }
-            "project.open" => self.input("open_project", "project.open"),
+            "project.open" => self.open_folder_picker()?,
             "files" => {
                 let root = self.root.clone();
                 self.job("files", move || {
@@ -888,6 +888,7 @@ impl App {
             return Ok(true);
         }
         let action = match binding.as_str() {
+            "F2" if !self.explorer_focus => Some("lsp.rename"),
             "Ctrl+Shift+p" => Some("palette"),
             "Ctrl+p" => Some("files"),
             "Ctrl+Alt+p" => Some("projects"),

@@ -85,71 +85,92 @@ pub enum Confirmation {
     Overwrite(PathBuf),
 }
 pub enum Dialog {
-    Prompt { kind: Prompt, input: String },
+    Prompt {
+        kind: Prompt,
+        input: String,
+    },
     Confirm(Confirmation),
-    Help { scroll: u16 },
-    Plugins { selected: usize },
-    Language { selected: usize },
-    Output { scroll: u16 },
+    Help {
+        scroll: u16,
+    },
+    Plugins {
+        selected: usize,
+    },
+    Language {
+        selected: usize,
+    },
+    Output {
+        scroll: u16,
+    },
     Diagram,
     Workbench,
-    Menu { menu: usize, selected: usize },
+    Menu {
+        menu: usize,
+        selected: usize,
+    },
+    FolderPicker {
+        directory: PathBuf,
+        entries: Vec<Entry>,
+        selected: usize,
+        offset: usize,
+    },
 }
 
 pub const MENU_NAMES: [&str; 9] = [
-    "File",
-    "Edit",
-    "Selection",
-    "View",
-    "Go",
-    "Run",
-    "Terminal",
-    "Help",
-    "Language",
+    "menu_file",
+    "menu_edit",
+    "menu_selection",
+    "menu_view",
+    "menu_go",
+    "menu_run",
+    "menu_terminal",
+    "menu_help",
+    "menu_language",
 ];
 pub const MENU_ITEMS: [&[(&str, &str, &str)]; 9] = [
     &[
-        ("New File", "Ctrl+N", "new"),
-        ("Open File or Folder…", "Ctrl+O", "open"),
-        ("Open Folder…", "", "open_folder"),
-        ("Save", "Ctrl+S", "save"),
-        ("Save As…", "F4", "save_as"),
-        ("Close Editor", "Ctrl+W", "close"),
-        ("Exit", "Ctrl+Q", "quit"),
+        ("menu_new_file", "Ctrl+N", "new"),
+        ("menu_open_file_or_folder", "Ctrl+O", "open"),
+        ("menu_open_folder", "", "open_folder"),
+        ("menu_save", "Ctrl+S", "save"),
+        ("menu_save_as", "F4", "save_as"),
+        ("menu_close_editor", "Ctrl+W", "close"),
+        ("menu_exit", "Ctrl+Q", "quit"),
     ],
     &[
-        ("Undo", "Ctrl+Z", "undo"),
-        ("Redo", "Ctrl+Y", "redo"),
-        ("Cut", "Ctrl+X", "cut"),
-        ("Copy", "Ctrl+C", "copy"),
-        ("Paste", "Ctrl+V", "paste"),
-        ("Find", "Ctrl+F", "find"),
-        ("Format Document", "Ctrl+R", "format"),
+        ("menu_undo", "Ctrl+Z", "undo"),
+        ("menu_redo", "Ctrl+Y", "redo"),
+        ("menu_cut", "Ctrl+X", "cut"),
+        ("menu_copy", "Ctrl+C", "copy"),
+        ("menu_paste", "Ctrl+V", "paste"),
+        ("menu_find", "Ctrl+F", "find"),
+        ("menu_format_document", "Ctrl+R", "format"),
     ],
-    &[("Select All", "Ctrl+A", "select_all")],
+    &[("menu_select_all", "Ctrl+A", "select_all")],
     &[
-        ("Explorer", "Ctrl+E", "explorer"),
-        ("Toggle Markdown Preview", "F7", "preview"),
-        ("Output", "F8", "output"),
-        ("Terminal", "F10", "terminal"),
-    ],
-    &[
-        ("Go to Next Match", "F3", "next_match"),
-        ("Next Editor", "F6", "next_tab"),
-        ("Previous Editor", "Ctrl+Tab", "previous_tab"),
+        ("menu_explorer", "Ctrl+E", "explorer"),
+        ("menu_toggle_markdown_preview", "F7", "preview"),
+        ("menu_output", "F8", "output"),
+        ("menu_terminal", "F10", "terminal"),
     ],
     &[
-        ("Build Workspace", "Ctrl+B", "build"),
-        ("Run Rust Project", "F11", "run"),
-        ("Command Palette", "Ctrl+Shift+P", "palette"),
+        ("menu_next_match", "F3", "next_match"),
+        ("menu_next_editor", "F6", "next_tab"),
+        ("menu_previous_editor", "Ctrl+Tab", "previous_tab"),
     ],
-    &[("Toggle Integrated Terminal", "F10", "terminal")],
     &[
-        ("Keyboard Shortcuts / Help", "F1", "help"),
-        ("Plugins", "Ctrl+Shift+P", "palette"),
+        ("menu_build_workspace", "Ctrl+B", "build"),
+        ("menu_run_rust_project", "F11", "run"),
+        ("menu_command_palette", "Ctrl+Shift+P", "palette"),
     ],
-    &[("Change Language", "F2", "language")],
+    &[("menu_toggle_terminal", "F10", "terminal")],
+    &[
+        ("menu_keyboard_shortcuts_help", "F1", "help"),
+        ("menu_plugins", "Ctrl+Shift+P", "palette"),
+    ],
+    &[("menu_change_language", "", "language")],
 ];
+#[derive(Clone)]
 pub struct Entry {
     pub path: PathBuf,
     pub directory: bool,
@@ -318,6 +339,71 @@ impl App {
         }
         let _ = crate::settings::register_project(&next.root);
         *self = next;
+        Ok(())
+    }
+    pub(crate) fn open_folder_picker(&mut self) -> Result<()> {
+        let directory = self.directory.canonicalize()?;
+        let entries = Self::folder_entries(&directory)?;
+        self.dialog = Some(Dialog::FolderPicker {
+            directory,
+            entries,
+            selected: 0,
+            offset: 0,
+        });
+        Ok(())
+    }
+    fn folder_entries(directory: &Path) -> Result<Vec<Entry>> {
+        let mut entries = fs::read_dir(directory)?
+            .filter_map(Result::ok)
+            .filter_map(|entry| {
+                let path = entry.path();
+                path.is_dir().then_some(Entry {
+                    path,
+                    directory: true,
+                })
+            })
+            .collect::<Vec<_>>();
+        entries.sort_by(|a, b| a.path.file_name().cmp(&b.path.file_name()));
+        Ok(entries)
+    }
+    pub(crate) fn folder_picker_choose(&mut self) -> Result<()> {
+        let Some(Dialog::FolderPicker { directory, .. }) = self.dialog.as_ref() else {
+            return Ok(());
+        };
+        let directory = directory.clone();
+        self.switch_project(&directory)?;
+        self.dialog = None;
+        Ok(())
+    }
+    fn folder_picker_enter(&mut self) -> Result<()> {
+        let Some(Dialog::FolderPicker {
+            directory,
+            entries,
+            selected,
+            ..
+        }) = self.dialog.as_ref()
+        else {
+            return Ok(());
+        };
+        let parent_offset = usize::from(directory.parent().is_some());
+        let next = if parent_offset == 1 && *selected == 0 {
+            directory.parent().map(Path::to_owned)
+        } else {
+            entries
+                .get(selected.saturating_sub(parent_offset))
+                .map(|entry| entry.path.clone())
+        };
+        let Some(next) = next else {
+            return Ok(());
+        };
+        let next = next.canonicalize()?;
+        let entries = Self::folder_entries(&next)?;
+        self.dialog = Some(Dialog::FolderPicker {
+            directory: next,
+            entries,
+            selected: 0,
+            offset: 0,
+        });
         Ok(())
     }
     pub(crate) fn hooks(&self, event: &str, text: &str, path: Option<&Path>) -> Result<String> {
@@ -581,13 +667,6 @@ impl App {
         }
         match key.code {
             KeyCode::F(1) => self.dialog = Some(Dialog::Help { scroll: 0 }),
-            KeyCode::F(2) => {
-                let selected = Language::ALL
-                    .iter()
-                    .position(|l| *l == self.i18n.language)
-                    .unwrap_or(0);
-                self.dialog = Some(Dialog::Language { selected });
-            }
             KeyCode::F(3) => self.find(),
             KeyCode::F(4) => self.prompt(Prompt::SaveAs),
             KeyCode::F(5) => {
@@ -790,6 +869,77 @@ impl App {
                 }
                 self.dialog = Some(Dialog::Language { selected });
             }
+            Dialog::FolderPicker {
+                directory,
+                entries,
+                mut selected,
+                mut offset,
+            } => {
+                let parent_offset = usize::from(directory.parent().is_some());
+                let last = entries
+                    .len()
+                    .saturating_add(parent_offset)
+                    .saturating_sub(1);
+                match key.code {
+                    KeyCode::Char('o' | 'O') => {
+                        self.dialog = Some(Dialog::FolderPicker {
+                            directory,
+                            entries,
+                            selected,
+                            offset,
+                        });
+                        self.folder_picker_choose()?;
+                        return Ok(());
+                    }
+                    KeyCode::Enter if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        self.dialog = Some(Dialog::FolderPicker {
+                            directory,
+                            entries,
+                            selected,
+                            offset,
+                        });
+                        self.folder_picker_choose()?;
+                        return Ok(());
+                    }
+                    KeyCode::Enter => {
+                        self.dialog = Some(Dialog::FolderPicker {
+                            directory,
+                            entries,
+                            selected,
+                            offset,
+                        });
+                        self.folder_picker_enter()?;
+                        return Ok(());
+                    }
+                    KeyCode::Up => selected = selected.saturating_sub(1),
+                    KeyCode::Down => selected = (selected + 1).min(last),
+                    KeyCode::PageUp => selected = selected.saturating_sub(10),
+                    KeyCode::PageDown => selected = (selected + 10).min(last),
+                    KeyCode::Home => selected = 0,
+                    KeyCode::End => selected = last,
+                    KeyCode::Backspace => {
+                        if let Some(parent) = directory.parent() {
+                            let parent = parent.to_owned();
+                            let next_entries = Self::folder_entries(&parent)?;
+                            self.dialog = Some(Dialog::FolderPicker {
+                                directory: parent,
+                                entries: next_entries,
+                                selected: 0,
+                                offset: 0,
+                            });
+                            return Ok(());
+                        }
+                    }
+                    _ => {}
+                }
+                offset = offset.min(last);
+                self.dialog = Some(Dialog::FolderPicker {
+                    directory,
+                    entries,
+                    selected,
+                    offset,
+                });
+            }
             Dialog::Output { mut scroll } => {
                 scroll = self.scroll_key(key, scroll, self.build_output.lines().count());
                 self.dialog = Some(Dialog::Output { scroll });
@@ -800,7 +950,7 @@ impl App {
     fn activate_menu(&mut self, action: &str) -> Result<()> {
         self.dialog = None;
         match action {
-            "open_folder" => self.prompt(Prompt::Open),
+            "open_folder" => self.open_folder_picker()?,
             "new" => {
                 self.documents.push(Document::new());
                 self.active = self.documents.len() - 1;

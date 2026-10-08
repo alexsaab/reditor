@@ -19,6 +19,8 @@ pub struct HitAreas {
     pub text: Rect,
     pub dialog: Rect,
     pub dialog_content: Rect,
+    pub folder_list: Rect,
+    pub folder_choose: Rect,
     pub confirm: Rect,
     pub cancel: Rect,
     pub dialog_close: Rect,
@@ -350,6 +352,39 @@ impl MouseController {
             MouseEventKind::Down(MouseButton::Left) => {
                 if self.areas.dialog_close.contains(point) || self.areas.cancel.contains(point) {
                     Self::key(app, KeyCode::Esc);
+                } else if self.areas.folder_choose.contains(point)
+                    && matches!(app.dialog, Some(Dialog::FolderPicker { .. }))
+                {
+                    self.follow_cursor = true;
+                    app.key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE));
+                } else if self.areas.folder_list.contains(point)
+                    && let Some((directory, entries)) = app.dialog.as_ref().and_then(|dialog| {
+                        if let Dialog::FolderPicker {
+                            directory, entries, ..
+                        } = dialog
+                        {
+                            Some((directory.clone(), entries.clone()))
+                        } else {
+                            None
+                        }
+                    })
+                {
+                    let offset = self.areas.plugin_offset;
+                    let row = offset + (point.y - self.areas.folder_list.y) as usize;
+                    let count = entries.len() + usize::from(directory.parent().is_some());
+                    if row < count {
+                        let open = self.double_click(format!("folder-picker:{row}"));
+                        app.dialog = Some(Dialog::FolderPicker {
+                            directory,
+                            entries,
+                            selected: row,
+                            offset,
+                        });
+                        if open {
+                            self.follow_cursor = true;
+                            Self::key(app, KeyCode::Enter);
+                        }
+                    }
                 } else if self.areas.confirm.contains(point) {
                     self.follow_cursor = true;
                     Self::key(app, KeyCode::Enter);
@@ -373,17 +408,17 @@ impl MouseController {
                             self.follow_cursor = true;
                             Self::key(app, KeyCode::Enter);
                         }
-                    } else if self.areas.dialog_content.contains(point)
-                        && let Some(Dialog::Menu { menu, .. }) = app.dialog.as_ref()
-                    {
-                        let selected = (point.y - self.areas.dialog_content.y) as usize;
-                        if selected < crate::app::MENU_ITEMS[*menu].len() {
-                            app.dialog = Some(Dialog::Menu {
-                                menu: *menu,
-                                selected,
-                            });
-                            Self::key(app, KeyCode::Enter);
-                        }
+                    }
+                } else if self.areas.dialog_content.contains(point)
+                    && let Some(Dialog::Menu { menu, .. }) = app.dialog.as_ref()
+                {
+                    let selected = (point.y - self.areas.dialog_content.y) as usize;
+                    if selected < crate::app::MENU_ITEMS[*menu].len() {
+                        app.dialog = Some(Dialog::Menu {
+                            menu: *menu,
+                            selected,
+                        });
+                        Self::key(app, KeyCode::Enter);
                     }
                 }
             }

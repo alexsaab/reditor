@@ -127,7 +127,8 @@ impl Renderer {
             let command_x = rows[0].x + brand_width + 1 + (available - command_width) / 2;
             let command_hit = Rect::new(command_x, rows[0].y, command_width, 1);
             frame.render_widget(
-                Paragraph::new("⌕  Search files  Ctrl+P").style(Style::default().fg(MUTED).bg(BG)),
+                Paragraph::new(format!("⌕  {}  Ctrl+P", app.i18n.t("command_center")))
+                    .style(Style::default().fg(MUTED).bg(BG)),
                 command_hit,
             );
             self.mouse.areas.toolbar.push((
@@ -136,11 +137,11 @@ impl Renderer {
             ));
         }
         let mut menu_x = rows[1].x;
-        for (index, name) in crate::app::MENU_NAMES.iter().enumerate() {
+        for (index, key) in crate::app::MENU_NAMES.iter().enumerate() {
             if menu_x >= rows[1].right() {
                 break;
             }
-            let label = format!(" {name} ");
+            let label = format!(" {} ", app.i18n.t(key));
             let width = (label.width() as u16).min(rows[1].right() - menu_x);
             let hit = Rect::new(menu_x, rows[1].y, width, 1);
             let active_menu =
@@ -651,6 +652,8 @@ impl Renderer {
         let width = full.width.saturating_sub(4).min(
             if matches!(app.dialog, Some(Dialog::Language { .. })) {
                 50
+            } else if matches!(app.dialog, Some(Dialog::FolderPicker { .. })) {
+                82
             } else {
                 90
             },
@@ -659,6 +662,7 @@ impl Renderer {
             Dialog::Prompt { .. } | Dialog::Confirm(_) => 6,
             Dialog::Language { .. } => 9,
             Dialog::Menu { menu, .. } => (crate::app::MENU_ITEMS[*menu].len() as u16 + 2).min(18),
+            Dialog::FolderPicker { .. } => 20,
             _ => 32,
         };
         let height = full.height.saturating_sub(4).min(requested_height);
@@ -677,7 +681,8 @@ impl Renderer {
             Dialog::Plugins { .. } => app.i18n.t("plugins"),
             Dialog::Output { .. } => app.i18n.t("output"),
             Dialog::Language { .. } => app.i18n.t("language"),
-            Dialog::Menu { menu, .. } => crate::app::MENU_NAMES[*menu],
+            Dialog::Menu { menu, .. } => app.i18n.t(crate::app::MENU_NAMES[*menu]),
+            Dialog::FolderPicker { .. } => app.i18n.t("folder_picker_title"),
         };
         let block = Block::default()
             .borders(Borders::ALL)
@@ -836,7 +841,9 @@ impl Renderer {
             Dialog::Menu { menu, selected } => {
                 let items: Vec<ListItem> = crate::app::MENU_ITEMS[*menu]
                     .iter()
-                    .map(|(label, shortcut, _)| ListItem::new(format!("{label:<32} {shortcut}")))
+                    .map(|(key, shortcut, _)| {
+                        ListItem::new(format!("{:<32} {shortcut}", app.i18n.t(key)))
+                    })
                     .collect();
                 let mut state = ListState::default().with_selected(Some(*selected));
                 frame.render_stateful_widget(
@@ -845,6 +852,78 @@ impl Renderer {
                         .highlight_symbol("› "),
                     content,
                     &mut state,
+                );
+            }
+            Dialog::FolderPicker {
+                directory,
+                entries,
+                selected,
+                offset,
+            } => {
+                let rows = Layout::vertical([
+                    Constraint::Length(1),
+                    Constraint::Min(1),
+                    Constraint::Length(1),
+                ])
+                .split(inner);
+                frame.render_widget(
+                    Paragraph::new(format!(
+                        "{} {}",
+                        app.i18n.t("folder_picker_path"),
+                        directory.display()
+                    ))
+                    .style(Style::default().fg(MUTED)),
+                    rows[0],
+                );
+                self.mouse.areas.folder_list = rows[1];
+                let mut items = Vec::with_capacity(entries.len() + 1);
+                if directory.parent().is_some() {
+                    items.push(ListItem::new(format!(
+                        "↑  {}",
+                        app.i18n.t("folder_picker_parent")
+                    )));
+                }
+                items.extend(entries.iter().map(|entry| {
+                    ListItem::new(format!(
+                        "▸  {}/",
+                        entry.path.file_name().unwrap_or_default().to_string_lossy()
+                    ))
+                }));
+                if items.is_empty() {
+                    frame.render_widget(
+                        Paragraph::new(app.i18n.t("folder_picker_empty"))
+                            .style(Style::default().fg(MUTED)),
+                        rows[1],
+                    );
+                } else {
+                    let mut state = ListState::default()
+                        .with_offset(*offset)
+                        .with_selected(Some(*selected));
+                    frame.render_stateful_widget(
+                        List::new(items)
+                            .highlight_style(Style::default().bg(SELECTED).fg(Color::White))
+                            .highlight_symbol("› "),
+                        rows[1],
+                        &mut state,
+                    );
+                    self.mouse.areas.plugin_offset = state.offset();
+                }
+                frame.render_widget(
+                    Paragraph::new(app.i18n.t("folder_picker_hint"))
+                        .style(Style::default().fg(MUTED)),
+                    rows[2],
+                );
+                let label = format!("[ {} ]", app.i18n.t("folder_picker_choose"));
+                let button_width = (label.width() as u16).min(rows[2].width);
+                self.mouse.areas.folder_choose = Rect::new(
+                    rows[2].right().saturating_sub(button_width),
+                    rows[2].y,
+                    button_width,
+                    1,
+                );
+                frame.render_widget(
+                    Paragraph::new(label).style(Style::default().fg(Color::White).bg(STATUS)),
+                    self.mouse.areas.folder_choose,
                 );
             }
         }
@@ -1296,7 +1375,18 @@ mod tests {
     fn language_menu_supports_cancel_keyboard_and_mouse() -> anyhow::Result<()> {
         let mut f = Fixture::new()?;
         f.app.paste("unsaved text");
-        f.app.key(KeyEvent::new(KeyCode::F(2), KeyModifiers::NONE));
+        f.draw()?;
+        let language_menu = f
+            .renderer
+            .mouse
+            .areas
+            .menu_headers
+            .iter()
+            .find(|(_, menu)| *menu == 8)
+            .unwrap()
+            .0;
+        f.click(language_menu.x, language_menu.y);
+        f.app.key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         assert!(matches!(
             f.app.dialog,
             Some(Dialog::Language { selected: 1 })
@@ -1307,7 +1397,18 @@ mod tests {
         assert_eq!(f.app.i18n.language, Language::En);
         assert!(!f.root.path().join(".reditor/config.toml").exists());
 
-        f.app.key(KeyEvent::new(KeyCode::F(2), KeyModifiers::NONE));
+        f.draw()?;
+        let language_menu = f
+            .renderer
+            .mouse
+            .areas
+            .menu_headers
+            .iter()
+            .find(|(_, menu)| *menu == 8)
+            .unwrap()
+            .0;
+        f.click(language_menu.x, language_menu.y);
+        f.app.key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         f.draw()?;
         let buffer = f.terminal.backend().buffer();
         let output: String = buffer.content.iter().map(|cell| cell.symbol()).collect();
@@ -1322,16 +1423,17 @@ mod tests {
         let config: crate::app::Config = toml::from_str(&std::fs::read_to_string(&config_path)?)?;
         assert_eq!(config.language, Language::De);
         f.draw()?;
-        let toolbar = f
+        let language_menu = f
             .renderer
             .mouse
             .areas
-            .toolbar
+            .menu_headers
             .iter()
-            .find(|(_, key)| key.code == KeyCode::F(2))
+            .find(|(_, menu)| *menu == 8)
             .unwrap()
             .0;
-        f.click(toolbar.x, toolbar.y);
+        f.click(language_menu.x, language_menu.y);
+        f.app.key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         f.draw()?;
         assert!(matches!(
             f.app.dialog,
