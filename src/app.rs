@@ -66,6 +66,7 @@ pub enum Prompt {
     SaveAs,
     NewFile,
     NewDir,
+    RenameFile,
     Search,
 }
 impl Prompt {
@@ -75,6 +76,7 @@ impl Prompt {
             Self::SaveAs => "save_as",
             Self::NewFile => "new_file",
             Self::NewDir => "new_dir",
+            Self::RenameFile => "rename_file",
             Self::Search => "search",
         }
     }
@@ -83,6 +85,7 @@ pub enum Confirmation {
     Quit,
     Close,
     Overwrite(PathBuf),
+    Delete(PathBuf),
 }
 pub enum Dialog {
     Prompt {
@@ -133,6 +136,7 @@ pub const MENU_ITEMS: [&[(&str, &str, &str)]; 9] = [
         ("menu_new_folder", "Ctrl+D", "new_dir"),
         ("menu_open_file_or_folder", "Ctrl+O", "open"),
         ("menu_open_folder", "", "open_folder"),
+        ("recent_projects", "Ctrl+Alt+P", "recent_projects"),
         ("menu_save", "Ctrl+S", "save"),
         ("menu_save_as", "F4", "save_as"),
         ("menu_close_editor", "Ctrl+W", "close"),
@@ -277,6 +281,120 @@ impl App {
         });
         self.entries = entries;
         self.selected = self.selected.min(self.entries.len().saturating_sub(1));
+        Ok(())
+    }
+    fn rename_selected(&mut self, name: &str) -> Result<()> {
+        let Some(entry) = self.entries.get(self.selected) else {
+            return Ok(());
+        };
+        let source = entry.path.clone();
+        let target_name = Path::new(name.trim());
+        anyhow::ensure!(
+            !target_name.as_os_str().is_empty()
+                && target_name.file_name().is_some()
+                && target_name.components().count() == 1,
+            "Invalid file name"
+        );
+        let target = self.directory.join(target_name);
+        anyhow::ensure!(target != source, "Name is unchanged");
+        anyhow::ensure!(
+            !target.exists(),
+            "A file or directory with that name already exists"
+        );
+        let canonical_source = if fs::symlink_metadata(&source)?.file_type().is_symlink() {
+            None
+        } else {
+            Some(source.canonicalize()?)
+        };
+        fs::rename(&source, &target)?;
+        self.rewrite_document_paths(
+            &source,
+            canonical_source.as_deref(),
+            &target.canonicalize()?,
+        );
+        self.refresh()?;
+        self.selected = self
+            .entries
+            .iter()
+            .position(|item| item.path == target)
+            .unwrap_or(0);
+        self.message("renamed");
+        Ok(())
+    }
+    pub(crate) fn move_entry(&mut self, source: &Path, directory: &Path) -> Result<()> {
+        let source = source.to_owned();
+        let directory = directory.canonicalize()?;
+        anyhow::ensure!(directory.is_dir(), "Destination is not a directory");
+        anyhow::ensure!(source != directory, "Cannot move a directory into itself");
+        anyhow::ensure!(
+            !directory.starts_with(&source),
+            "Cannot move a directory into one of its descendants"
+        );
+        let name = source.file_name().context("Invalid source path")?;
+        let target = directory.join(name);
+        anyhow::ensure!(
+            !target.exists(),
+            "Destination already contains an item with that name"
+        );
+        let canonical_source = if fs::symlink_metadata(&source)?.file_type().is_symlink() {
+            None
+        } else {
+            Some(source.canonicalize()?)
+        };
+        fs::rename(&source, &target)?;
+        self.rewrite_document_paths(
+            &source,
+            canonical_source.as_deref(),
+            &target.canonicalize()?,
+        );
+        self.refresh()?;
+        self.message("moved");
+        Ok(())
+    }
+    fn rewrite_document_paths(
+        &mut self,
+        source: &Path,
+        canonical_source: Option<&Path>,
+        target: &Path,
+    ) {
+        for doc in &mut self.documents {
+            if let Some(path) = doc.path.as_ref()
+                && let Some(relative) = path
+                    .strip_prefix(source)
+                    .ok()
+                    .or_else(|| canonical_source.and_then(|root| path.strip_prefix(root).ok()))
+            {
+                doc.path = Some(if relative.as_os_str().is_empty() {
+                    target.to_owned()
+                } else {
+                    target.join(relative)
+                });
+            }
+        }
+    }
+    fn delete_path(&mut self, path: &Path) -> Result<()> {
+        let canonical_path = if fs::symlink_metadata(path)?.file_type().is_symlink() {
+            None
+        } else {
+            Some(path.canonicalize()?)
+        };
+        if path.is_dir() {
+            fs::remove_dir_all(path)?;
+        } else {
+            fs::remove_file(path)?;
+        }
+        for doc in &mut self.documents {
+            if doc.path.as_ref().is_some_and(|document_path| {
+                document_path.starts_with(path)
+                    || canonical_path
+                        .as_ref()
+                        .is_some_and(|root| document_path.starts_with(root))
+            }) {
+                doc.path = None;
+            }
+        }
+        self.refresh()?;
+        self.message("deleted");
         Ok(())
     }
     fn resolve(&self, value: &str) -> PathBuf {
@@ -484,6 +602,12 @@ impl App {
                 .map(|p| p.to_string_lossy().into_owned())
                 .unwrap_or_default(),
             Prompt::Search => self.search.clone(),
+            Prompt::RenameFile => self
+                .entries
+                .get(self.selected)
+                .and_then(|entry| entry.path.file_name())
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_default(),
             _ => String::new(),
         };
         self.dialog = Some(Dialog::Prompt { kind, input });
@@ -724,6 +848,16 @@ impl App {
     }
     fn explorer_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
+            KeyCode::F(2) => {
+                if self.entries.get(self.selected).is_some() {
+                    self.prompt(Prompt::RenameFile);
+                }
+            }
+            KeyCode::Delete => {
+                if let Some(entry) = self.entries.get(self.selected) {
+                    self.dialog = Some(Dialog::Confirm(Confirmation::Delete(entry.path.clone())));
+                }
+            }
             KeyCode::Up => self.selected = self.selected.saturating_sub(1),
             KeyCode::Down => {
                 self.selected = (self.selected + 1).min(self.entries.len().saturating_sub(1))
@@ -827,6 +961,7 @@ impl App {
                         Confirmation::Quit => self.quit = true,
                         Confirmation::Close => self.close(),
                         Confirmation::Overwrite(path) => self.save(&path, true)?,
+                        Confirmation::Delete(path) => self.delete_path(&path)?,
                     }
                 } else {
                     self.dialog = Some(Dialog::Confirm(action));
@@ -952,6 +1087,7 @@ impl App {
         self.dialog = None;
         match action {
             "open_folder" => self.open_folder_picker()?,
+            "recent_projects" => self.command("projects")?,
             "new_dir" => self.prompt(Prompt::NewDir),
             "new" => {
                 self.documents.push(Document::new());
@@ -1176,6 +1312,7 @@ impl App {
                 self.search = input.to_owned();
                 self.find();
             }
+            Prompt::RenameFile => self.rename_selected(input)?,
         }
         Ok(())
     }
@@ -1381,6 +1518,54 @@ mod tests {
         assert!(app.submit(Prompt::NewFile, "src/nested/main.rs").is_err());
         app.submit(Prompt::SaveAs, "notes.txt")?;
         assert!(root.path().join("notes.txt").exists());
+        Ok(())
+    }
+    #[test]
+    fn explorer_rename_move_and_confirmed_delete_update_open_paths() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let source_dir = root.path().join("source");
+        let target_dir = root.path().join("target");
+        fs::create_dir(&source_dir)?;
+        fs::create_dir(&target_dir)?;
+        let file = source_dir.join("note.txt");
+        fs::write(&file, "text")?;
+        let mut app = App::new(root.path().to_owned(), Language::En, vec![])?;
+        app.open(&file)?;
+        app.directory = source_dir.clone();
+        app.refresh()?;
+        app.selected = app
+            .entries
+            .iter()
+            .position(|entry| entry.path == file)
+            .unwrap();
+        app.submit(Prompt::RenameFile, "renamed.txt")?;
+        let renamed = source_dir.join("renamed.txt");
+        assert_eq!(
+            app.doc().path.as_deref(),
+            Some(renamed.canonicalize()?.as_path())
+        );
+        app.move_entry(&renamed, &target_dir)?;
+        let moved = target_dir.join("renamed.txt");
+        assert_eq!(
+            app.doc().path.as_deref(),
+            Some(moved.canonicalize()?.as_path())
+        );
+        app.directory = target_dir;
+        app.refresh()?;
+        app.selected = app
+            .entries
+            .iter()
+            .position(|entry| entry.path == moved)
+            .unwrap();
+        app.explorer_focus = true;
+        app.key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
+        assert!(matches!(
+            app.dialog,
+            Some(Dialog::Confirm(Confirmation::Delete(_)))
+        ));
+        app.key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(!moved.exists());
+        assert!(app.doc().path.is_none());
         Ok(())
     }
     #[test]

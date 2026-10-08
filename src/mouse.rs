@@ -34,6 +34,7 @@ pub struct MouseController {
     pub areas: HitAreas,
     pub follow_cursor: bool,
     dragging: Option<u64>,
+    dragging_file: Option<std::path::PathBuf>,
     last_click: Option<(String, Instant)>,
 }
 impl Default for MouseController {
@@ -42,6 +43,7 @@ impl Default for MouseController {
             areas: HitAreas::default(),
             follow_cursor: true,
             dragging: None,
+            dragging_file: None,
             last_click: None,
         }
     }
@@ -51,6 +53,7 @@ impl MouseController {
     pub fn keyboard(&mut self) {
         self.follow_cursor = true;
         self.dragging = None;
+        self.dragging_file = None;
         self.last_click = None;
     }
     fn key(app: &mut App, code: KeyCode) {
@@ -68,6 +71,21 @@ impl MouseController {
         let point = Position::new(event.column, event.row);
         if matches!(event.kind, MouseEventKind::Up(MouseButton::Left)) {
             self.dragging = None;
+            if let Some(source) = self.dragging_file.take()
+                && self.areas.files.contains(point)
+            {
+                let index = app.explorer_offset + (event.row - self.areas.files.y) as usize;
+                if let Some(destination) = app
+                    .entries
+                    .get(index)
+                    .filter(|entry| entry.directory)
+                    .map(|entry| entry.path.clone())
+                    .filter(|destination| destination != &source)
+                    && let Err(error) = app.move_entry(&source, &destination)
+                {
+                    app.error(error);
+                }
+            }
             return;
         }
         if app.dialog.is_some() {
@@ -129,9 +147,11 @@ impl MouseController {
                         if let Some(entry) = app.entries.get(index) {
                             let path = entry.path.clone();
                             app.selected = index;
+                            self.dragging_file = Some(path.clone());
                             if self.double_click(format!("file:{}", path.display())) {
                                 Self::key(app, KeyCode::Enter);
                                 self.follow_cursor = true;
+                                self.dragging_file = None;
                             }
                         }
                     }

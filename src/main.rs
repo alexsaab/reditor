@@ -50,23 +50,25 @@ impl Drop for TerminalGuard {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let cwd = std::env::current_dir()?;
-    let root = cli.workspace.unwrap_or_else(|| {
-        cli.paths
-            .first()
-            .map(|p| {
-                let p = if p.is_absolute() {
-                    p.clone()
-                } else {
-                    cwd.join(p)
-                };
-                if p.is_dir() {
-                    p
-                } else {
-                    p.parent().unwrap_or(&cwd).to_owned()
-                }
-            })
+    let root = if let Some(workspace) = cli.workspace {
+        workspace
+    } else if let Some(path) = cli.paths.first() {
+        let path = if path.is_absolute() {
+            path.clone()
+        } else {
+            cwd.join(path)
+        };
+        if path.is_dir() {
+            path
+        } else {
+            path.parent().unwrap_or(&cwd).to_owned()
+        }
+    } else {
+        reditor::settings::recent_projects()?
+            .into_iter()
+            .next()
             .unwrap_or(cwd.clone())
-    });
+    };
     if !cli.install_plugins.is_empty() {
         let directory = if cli.scope == "user" {
             reditor::settings::user_dir()?

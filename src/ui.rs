@@ -797,11 +797,17 @@ impl Renderer {
                     Confirmation::Quit => "confirm_quit",
                     Confirmation::Close => "confirm_close",
                     Confirmation::Overwrite(_) => "confirm_overwrite",
+                    Confirmation::Delete(_) => "confirm_delete",
                 };
-                frame.render_widget(
-                    Paragraph::new(app.i18n.t(key)).wrap(Wrap { trim: false }),
-                    content,
-                );
+                let message = match action {
+                    Confirmation::Delete(path) => format!(
+                        "{}\n{}",
+                        app.i18n.t(key),
+                        path.file_name().unwrap_or_default().to_string_lossy()
+                    ),
+                    _ => app.i18n.t(key).to_owned(),
+                };
+                frame.render_widget(Paragraph::new(message).wrap(Wrap { trim: false }), content);
             }
             Dialog::Help { scroll } => frame.render_widget(
                 Paragraph::new(app.i18n.t("help_text")).scroll((*scroll, 0)),
