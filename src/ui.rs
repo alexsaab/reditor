@@ -189,7 +189,7 @@ impl Renderer {
         while self.tab_start < app.active
             && titles[self.tab_start..=app.active]
                 .iter()
-                .map(|t| t.width() + 3)
+                .map(|t| t.width() + 5)
                 .sum::<usize>()
                 > rows[2].width as usize
         {
@@ -201,7 +201,7 @@ impl Renderer {
             if x >= rows[2].right() {
                 break;
             }
-            let width = (title.width() + 2).min((rows[2].right() - x) as usize) as u16;
+            let width = (title.width() + 4).min((rows[2].right() - x) as usize) as u16;
             let hit = Rect::new(x, rows[2].y, width, 1);
             let style = if index == app.active {
                 Style::default()
@@ -213,9 +213,15 @@ impl Renderer {
             };
             let mut padded = title.clone();
             padded.spans.insert(0, Span::raw(" "));
-            padded.spans.push(Span::raw(" "));
+            padded.spans.push(Span::raw(" × "));
             frame.render_widget(Paragraph::new(padded).style(style), hit);
             self.mouse.areas.tabs.push((hit, index));
+            if hit.width >= 2 {
+                self.mouse
+                    .areas
+                    .tab_close
+                    .push((Rect::new(hit.right() - 2, hit.y, 1, 1), index));
+            }
             x += width;
             if x < rows[2].right() {
                 frame.render_widget(
@@ -353,6 +359,7 @@ impl Renderer {
             Constraint::Min(0),
         ])
         .split(area);
+        let heading_width = area.width.saturating_sub(5);
         frame.render_widget(
             Paragraph::new(format!("  {}", app.i18n.t("files"))).style(
                 Style::default()
@@ -360,8 +367,26 @@ impl Renderer {
                     .bg(PANEL)
                     .add_modifier(Modifier::BOLD),
             ),
-            rows[0],
+            Rect::new(rows[0].x, rows[0].y, heading_width, 1),
         );
+        let new_file = Rect::new(rows[0].right().saturating_sub(5), rows[0].y, 2, 1);
+        let new_folder = Rect::new(rows[0].right().saturating_sub(2), rows[0].y, 2, 1);
+        frame.render_widget(
+            Paragraph::new("+").style(Style::default().fg(MUTED).bg(PANEL)),
+            new_file,
+        );
+        frame.render_widget(
+            Paragraph::new("▸+").style(Style::default().fg(ACCENT).bg(PANEL)),
+            new_folder,
+        );
+        self.mouse.areas.toolbar.push((
+            new_file,
+            KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL),
+        ));
+        self.mouse.areas.toolbar.push((
+            new_folder,
+            KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL),
+        ));
         self.mouse.areas.explorer = area;
         self.mouse.areas.files = rows[2];
         self.mouse.areas.parent = rows[1];

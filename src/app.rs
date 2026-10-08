@@ -130,6 +130,7 @@ pub const MENU_NAMES: [&str; 9] = [
 pub const MENU_ITEMS: [&[(&str, &str, &str)]; 9] = [
     &[
         ("menu_new_file", "Ctrl+N", "new"),
+        ("menu_new_folder", "Ctrl+D", "new_dir"),
         ("menu_open_file_or_folder", "Ctrl+O", "open"),
         ("menu_open_folder", "", "open_folder"),
         ("menu_save", "Ctrl+S", "save"),
@@ -951,6 +952,7 @@ impl App {
         self.dialog = None;
         match action {
             "open_folder" => self.open_folder_picker()?,
+            "new_dir" => self.prompt(Prompt::NewDir),
             "new" => {
                 self.documents.push(Document::new());
                 self.active = self.documents.len() - 1;

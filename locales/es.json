@@ -183,5 +183,6 @@
   "folder_picker_parent": ".. (carpeta superior)",
   "folder_picker_empty": "Esta carpeta no contiene subcarpetas",
   "folder_picker_choose": "Elegir esta carpeta",
-  "folder_picker_hint": "Enter abre una carpeta · O elige esta carpeta · Esc cancela"
+  "folder_picker_hint": "Enter abre una carpeta · O elige esta carpeta · Esc cancela",
+  "menu_new_folder": "Nueva carpeta"
 }

@@ -10,6 +10,7 @@ pub struct HitAreas {
     pub menu_headers: Vec<(Rect, usize)>,
     pub toolbar: Vec<(Rect, KeyEvent)>,
     pub tabs: Vec<(Rect, usize)>,
+    pub tab_close: Vec<(Rect, usize)>,
     pub explorer: Rect,
     pub parent: Rect,
     pub files: Rect,
@@ -98,6 +99,16 @@ impl MouseController {
                 } else if self.areas.mode_toggle.contains(point) {
                     self.follow_cursor = true;
                     Self::key(app, KeyCode::F(7));
+                } else if let Some((_, index)) = self
+                    .areas
+                    .tab_close
+                    .iter()
+                    .find(|(area, _)| area.contains(point))
+                {
+                    app.active = *index;
+                    app.explorer_focus = false;
+                    self.follow_cursor = true;
+                    app.key(KeyEvent::new(KeyCode::Char('w'), KeyModifiers::CONTROL));
                 } else if let Some((_, index)) = self
                     .areas
                     .tabs

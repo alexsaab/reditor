@@ -183,5 +183,6 @@
   "folder_picker_parent": ".. (übergeordneter Ordner)",
   "folder_picker_empty": "Keine Unterordner vorhanden",
   "folder_picker_choose": "Diesen Ordner auswählen",
-  "folder_picker_hint": "Enter öffnet einen Ordner · O wählt diesen Ordner · Esc bricht ab"
+  "folder_picker_hint": "Enter öffnet einen Ordner · O wählt diesen Ordner · Esc bricht ab",
+  "menu_new_folder": "Neuer Ordner"
 }

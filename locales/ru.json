@@ -183,5 +183,6 @@
   "folder_picker_parent": ".. (родительская папка)",
   "folder_picker_empty": "В этой папке нет вложенных каталогов",
   "folder_picker_choose": "Выбрать эту папку",
-  "folder_picker_hint": "Enter — открыть каталог · O — выбрать текущую папку · Esc — отмена"
+  "folder_picker_hint": "Enter — открыть каталог · O — выбрать текущую папку · Esc — отмена",
+  "menu_new_folder": "Новая папка"
 }

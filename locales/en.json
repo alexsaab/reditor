@@ -183,5 +183,6 @@
   "folder_picker_parent": ".. (parent folder)",
   "folder_picker_empty": "No subfolders in this folder",
   "folder_picker_choose": "Choose This Folder",
-  "folder_picker_hint": "Enter opens a folder · O selects this folder · Esc cancels"
+  "folder_picker_hint": "Enter opens a folder · O selects this folder · Esc cancels",
+  "menu_new_folder": "New Folder"
 }
