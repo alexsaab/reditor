@@ -10,7 +10,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     process::Command,
     sync::{
         Arc,
@@ -136,7 +136,13 @@ pub const MENU_NAMES: [&str; 9] = [
     "menu_help",
     "menu_language",
 ];
-pub const EXPLORER_CONTEXT_ITEMS: [&str; 3] = ["context_open", "context_rename", "context_delete"];
+pub const EXPLORER_CONTEXT_ITEMS: [&str; 5] = [
+    "context_open",
+    "context_rename",
+    "context_delete",
+    "context_copy_absolute_path",
+    "context_copy_relative_path",
+];
 pub const MENU_ITEMS: [&[(&str, &str, &str)]; 9] = [
     &[
         ("menu_new_file", "Ctrl+N", "new"),
@@ -212,6 +218,34 @@ pub struct App {
     pub build: Option<Receiver<Result<(bool, String, String)>>>,
     build_worker: Option<thread::JoinHandle<()>>,
     build_cancel: Arc<AtomicBool>,
+}
+
+fn relative_path(from: &Path, to: &Path) -> Option<PathBuf> {
+    let from_components: Vec<_> = from.components().collect();
+    let to_components: Vec<_> = to.components().collect();
+    let common = from_components
+        .iter()
+        .zip(&to_components)
+        .take_while(|(left, right)| left == right)
+        .count();
+    if common == 0 {
+        return None;
+    }
+    let mut relative = PathBuf::new();
+    for component in &from_components[common..] {
+        match component {
+            Component::Normal(_) | Component::ParentDir => relative.push(".."),
+            Component::CurDir => {}
+            Component::RootDir | Component::Prefix(_) => return None,
+        }
+    }
+    for component in &to_components[common..] {
+        relative.push(component.as_os_str());
+    }
+    if relative.as_os_str().is_empty() {
+        relative.push(".");
+    }
+    Some(relative)
 }
 
 impl App {
@@ -917,8 +951,30 @@ impl App {
             }
             1 => self.prompt(Prompt::RenameFile),
             2 => self.dialog = Some(Dialog::Confirm(Confirmation::Delete(path))),
+            3 => self.copy_explorer_path(&path, false)?,
+            4 => self.copy_explorer_path(&path, true)?,
             _ => {}
         }
+        Ok(())
+    }
+    fn copy_explorer_path(&mut self, path: &Path, relative: bool) -> Result<()> {
+        let value = if relative {
+            relative_path(&self.root, path)
+                .context("Cannot make this path relative to the project")?
+        } else {
+            path.to_owned()
+        };
+        let text = value.to_string_lossy().into_owned();
+        self.clipboard = text.clone();
+        if self.system_clipboard.is_none() {
+            self.system_clipboard = arboard::Clipboard::new().ok();
+        }
+        let clipboard = self
+            .system_clipboard
+            .as_mut()
+            .context("System clipboard is unavailable")?;
+        clipboard.set_text(text)?;
+        self.message("path_copied");
         Ok(())
     }
     fn dialog_key(&mut self, key: KeyEvent) -> Result<()> {
@@ -1634,6 +1690,44 @@ mod tests {
         app.key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         assert!(!moved.exists());
         assert!(app.doc().path.is_none());
+        Ok(())
+    }
+    #[test]
+    fn explorer_paths_can_be_copied_project_relative() {
+        let project = Path::new("/workspace/demo");
+        assert_eq!(
+            relative_path(project, Path::new("/workspace/demo/src/main.rs")),
+            Some(PathBuf::from("src/main.rs"))
+        );
+        assert_eq!(
+            relative_path(project, Path::new("/workspace/notes.txt")),
+            Some(PathBuf::from("../notes.txt"))
+        );
+        assert_eq!(relative_path(project, project), Some(PathBuf::from(".")));
+    }
+    #[test]
+    fn explorer_renames_and_deletes_nonempty_directories() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let folder = root.path().canonicalize()?.join("old-folder");
+        fs::create_dir(&folder)?;
+        fs::write(folder.join("inside.txt"), "keep")?;
+        let mut app = App::new(root.path().to_owned(), Language::En, vec![])?;
+        app.selected = app
+            .entries
+            .iter()
+            .position(|entry| entry.path == folder)
+            .unwrap();
+        app.submit(Prompt::RenameFile, "new-folder")?;
+        let renamed = app.root.join("new-folder");
+        assert!(renamed.join("inside.txt").is_file());
+        app.selected = app
+            .entries
+            .iter()
+            .position(|entry| entry.path == renamed)
+            .unwrap();
+        app.explorer_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE))?;
+        app.dialog_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))?;
+        assert!(!renamed.exists());
         Ok(())
     }
     #[test]
