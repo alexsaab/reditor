@@ -673,6 +673,16 @@ impl Renderer {
             self.diagram(frame, app);
             return;
         }
+        if let Some(Dialog::ExplorerContext {
+            path,
+            selected,
+            x,
+            y,
+        }) = app.dialog.as_ref()
+        {
+            self.explorer_context(frame, app, path.clone(), *selected, *x, *y);
+            return;
+        }
         let full = frame.area();
         let width = full.width.saturating_sub(4).min(
             if matches!(app.dialog, Some(Dialog::Language { .. })) {
@@ -699,7 +709,7 @@ impl Renderer {
         );
         frame.render_widget(Clear, area);
         let title = match app.dialog.as_ref().unwrap() {
-            Dialog::Diagram | Dialog::Workbench => unreachable!(),
+            Dialog::Diagram | Dialog::Workbench | Dialog::ExplorerContext { .. } => unreachable!(),
             Dialog::Prompt { kind, .. } => app.i18n.t(kind.key()),
             Dialog::Confirm(_) => app.i18n.t("dirty"),
             Dialog::Help { .. } => app.i18n.t("help"),
@@ -765,7 +775,7 @@ impl Renderer {
             );
         }
         match app.dialog.as_ref().unwrap() {
-            Dialog::Diagram | Dialog::Workbench => unreachable!(),
+            Dialog::Diagram | Dialog::Workbench | Dialog::ExplorerContext { .. } => unreachable!(),
             Dialog::Prompt { input, .. } => {
                 let parts = Layout::vertical([
                     Constraint::Length(1),
@@ -957,6 +967,55 @@ impl Renderer {
                     self.mouse.areas.folder_choose,
                 );
             }
+        }
+    }
+    fn explorer_context(
+        &mut self,
+        frame: &mut Frame,
+        app: &App,
+        _path: std::path::PathBuf,
+        selected: usize,
+        x: u16,
+        y: u16,
+    ) {
+        let full = frame.area();
+        if full.width == 0 || full.height == 0 {
+            return;
+        }
+        let width = crate::app::EXPLORER_CONTEXT_ITEMS
+            .iter()
+            .map(|key| app.i18n.t(key).width())
+            .max()
+            .unwrap_or(8)
+            .saturating_add(4)
+            .min(full.width as usize) as u16;
+        let height = (crate::app::EXPLORER_CONTEXT_ITEMS.len() as u16 + 2).min(full.height);
+        let x = x.min(full.right().saturating_sub(width));
+        let y = y.min(full.bottom().saturating_sub(height));
+        let area = Rect::new(x, y, width, height);
+        frame.render_widget(Clear, area);
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .style(Style::default().bg(PANEL).fg(TEXT))
+            .border_style(Style::default().fg(ACCENT));
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+        self.mouse.areas.dialog = area;
+        self.mouse.areas.dialog_content = inner;
+        for (index, key) in crate::app::EXPLORER_CONTEXT_ITEMS.iter().enumerate() {
+            if index >= inner.height as usize {
+                break;
+            }
+            let row = Rect::new(inner.x, inner.y + index as u16, inner.width, 1);
+            frame.render_widget(
+                Paragraph::new(format!(" {}", app.i18n.t(key))).style(if index == selected {
+                    Style::default().fg(BG).bg(ACCENT)
+                } else {
+                    Style::default().fg(TEXT).bg(PANEL)
+                }),
+                row,
+            );
+            self.mouse.areas.context_items.push((row, index));
         }
     }
     fn diagram(&mut self, frame: &mut Frame, app: &mut App) {
@@ -1400,6 +1459,48 @@ mod tests {
         let close = f.renderer.mouse.areas.dialog_close;
         f.click(close.x, close.y);
         assert!(f.app.dialog.is_none());
+        Ok(())
+    }
+    #[test]
+    fn right_click_file_opens_context_menu_with_rename_and_delete_actions() -> anyhow::Result<()> {
+        let mut f = Fixture::new()?;
+        let file = f.root.path().join("context.txt");
+        std::fs::write(&file, "content")?;
+        f.app.refresh()?;
+        f.draw()?;
+        let files = f.renderer.mouse.areas.files;
+        f.mouse(
+            MouseEventKind::Down(MouseButton::Right),
+            files.x + 2,
+            files.y,
+            KeyModifiers::NONE,
+        );
+        assert!(matches!(f.app.dialog, Some(Dialog::ExplorerContext { .. })));
+        f.draw()?;
+        let rename = f.renderer.mouse.areas.context_items[1].0;
+        f.click(rename.x, rename.y);
+        assert!(matches!(
+            f.app.dialog,
+            Some(Dialog::Prompt {
+                kind: crate::app::Prompt::RenameFile,
+                ..
+            })
+        ));
+        f.app.key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        f.draw()?;
+        f.mouse(
+            MouseEventKind::Down(MouseButton::Right),
+            files.x + 2,
+            files.y,
+            KeyModifiers::NONE,
+        );
+        f.draw()?;
+        let delete = f.renderer.mouse.areas.context_items[2].0;
+        f.click(delete.x, delete.y);
+        assert!(matches!(
+            f.app.dialog,
+            Some(Dialog::Confirm(crate::app::Confirmation::Delete(_)))
+        ));
         Ok(())
     }
     #[test]

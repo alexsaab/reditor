@@ -111,6 +111,12 @@ pub enum Dialog {
         menu: usize,
         selected: usize,
     },
+    ExplorerContext {
+        path: PathBuf,
+        selected: usize,
+        x: u16,
+        y: u16,
+    },
     FolderPicker {
         directory: PathBuf,
         entries: Vec<Entry>,
@@ -130,6 +136,7 @@ pub const MENU_NAMES: [&str; 9] = [
     "menu_help",
     "menu_language",
 ];
+pub const EXPLORER_CONTEXT_ITEMS: [&str; 3] = ["context_open", "context_rename", "context_delete"];
 pub const MENU_ITEMS: [&[(&str, &str, &str)]; 9] = [
     &[
         ("menu_new_file", "Ctrl+N", "new"),
@@ -659,7 +666,10 @@ impl App {
         }
     }
     fn handle_key(&mut self, key: KeyEvent) -> Result<()> {
-        if matches!(self.dialog, Some(Dialog::Menu { .. })) {
+        if matches!(
+            self.dialog,
+            Some(Dialog::Menu { .. } | Dialog::ExplorerContext { .. })
+        ) {
             return self.dialog_key(key);
         }
         if self.studio_key(key)? {
@@ -887,6 +897,30 @@ impl App {
         }
         Ok(())
     }
+    fn explorer_context_action(&mut self, action: usize, path: PathBuf) -> Result<()> {
+        self.selected = self
+            .entries
+            .iter()
+            .position(|entry| entry.path == path)
+            .unwrap_or(self.selected);
+        self.explorer_focus = true;
+        match action {
+            0 => {
+                if path.is_dir() {
+                    self.directory = path;
+                    self.selected = 0;
+                    self.explorer_offset = 0;
+                    self.refresh()?;
+                } else {
+                    self.open(&path)?;
+                }
+            }
+            1 => self.prompt(Prompt::RenameFile),
+            2 => self.dialog = Some(Dialog::Confirm(Confirmation::Delete(path))),
+            _ => {}
+        }
+        Ok(())
+    }
     fn dialog_key(&mut self, key: KeyEvent) -> Result<()> {
         if matches!(self.dialog, Some(Dialog::Diagram)) {
             return self.diagram_key(key);
@@ -925,6 +959,40 @@ impl App {
                 }
                 self.dialog = Some(Dialog::Menu { menu, selected });
             }
+            Dialog::ExplorerContext {
+                path,
+                mut selected,
+                x,
+                y,
+            } => match key.code {
+                KeyCode::Up => {
+                    selected = selected.saturating_sub(1);
+                    self.dialog = Some(Dialog::ExplorerContext {
+                        path,
+                        selected,
+                        x,
+                        y,
+                    });
+                }
+                KeyCode::Down => {
+                    selected = (selected + 1).min(EXPLORER_CONTEXT_ITEMS.len() - 1);
+                    self.dialog = Some(Dialog::ExplorerContext {
+                        path,
+                        selected,
+                        x,
+                        y,
+                    });
+                }
+                KeyCode::Enter => self.explorer_context_action(selected, path)?,
+                _ => {
+                    self.dialog = Some(Dialog::ExplorerContext {
+                        path,
+                        selected,
+                        x,
+                        y,
+                    });
+                }
+            },
             Dialog::Prompt { kind, mut input } => {
                 match key.code {
                     KeyCode::Enter => {

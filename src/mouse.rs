@@ -25,6 +25,7 @@ pub struct HitAreas {
     pub confirm: Rect,
     pub cancel: Rect,
     pub dialog_close: Rect,
+    pub context_items: Vec<(Rect, usize)>,
     pub plugin_offset: usize,
     pub diagram_actions: Vec<(Rect, KeyCode)>,
     pub wrap_rows: Vec<(usize, usize)>,
@@ -93,6 +94,22 @@ impl MouseController {
             return;
         }
         match event.kind {
+            MouseEventKind::Down(MouseButton::Right)
+                if self.areas.files.contains(point) && self.areas.explorer.contains(point) =>
+            {
+                let index = app.explorer_offset + (event.row - self.areas.files.y) as usize;
+                if let Some(entry) = app.entries.get(index) {
+                    app.selected = index;
+                    app.explorer_focus = true;
+                    self.follow_cursor = true;
+                    app.dialog = Some(Dialog::ExplorerContext {
+                        path: entry.path.clone(),
+                        selected: 0,
+                        x: event.column,
+                        y: event.row,
+                    });
+                }
+            }
             MouseEventKind::Down(MouseButton::Left) => {
                 self.dragging = None;
                 if let Some((_, menu)) = self
@@ -334,6 +351,32 @@ impl MouseController {
         }
     }
     fn dialog(&mut self, app: &mut App, event: MouseEvent, point: Position) {
+        let context = app.dialog.as_ref().and_then(|dialog| match dialog {
+            Dialog::ExplorerContext { path, x, y, .. } => Some((path.clone(), *x, *y)),
+            _ => None,
+        });
+        if let Some((path, x, y)) = context {
+            if event.kind == MouseEventKind::Down(MouseButton::Left) {
+                if let Some((_, selected)) = self
+                    .areas
+                    .context_items
+                    .iter()
+                    .find(|(area, _)| area.contains(point))
+                {
+                    app.dialog = Some(Dialog::ExplorerContext {
+                        path: path.clone(),
+                        selected: *selected,
+                        x,
+                        y,
+                    });
+                    self.follow_cursor = true;
+                    Self::key(app, KeyCode::Enter);
+                } else {
+                    Self::key(app, KeyCode::Esc);
+                }
+            }
+            return;
+        }
         if matches!(app.dialog, Some(Dialog::Diagram)) {
             match event.kind {
                 MouseEventKind::Down(MouseButton::Left) => {
