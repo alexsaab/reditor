@@ -195,5 +195,11 @@
   "folder_picker_empty": "No subfolders in this folder",
   "folder_picker_choose": "Choose This Folder",
   "folder_picker_hint": "Enter opens a folder · O selects this folder · Esc cancels",
-  "menu_new_folder": "New Folder"
+  "menu_new_folder": "New Folder",
+  "agent_panel": "AI Agent Panel",
+  "agent_select": "Select AI Agent",
+  "agent_restart": "Restart AI Agent",
+  "plugins_check": "Plugin & Agent Diagnostics",
+  "agent_grow": "Grow AI agent panel",
+  "agent_shrink": "Shrink AI agent panel"
 }

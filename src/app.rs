@@ -676,6 +676,14 @@ impl App {
             }
             return;
         }
+        if self.dialog.is_none() && self.studio.right_terminal_focus {
+            if let Some(terminal) = self.studio.right_terminal.as_mut()
+                && let Err(e) = terminal.paste(text)
+            {
+                self.error(e);
+            }
+            return;
+        }
         if self.dialog.is_none() && self.studio.terminal_focus {
             if let Some(terminal) = self.studio.terminal_mut()
                 && let Err(e) = terminal.paste(text)
@@ -806,7 +814,7 @@ impl App {
                     self.doc_mut().preview = false;
                     self.prompt(Prompt::Search);
                 }
-                KeyCode::Char('a') => {
+                KeyCode::Char('a') if !key.modifiers.contains(KeyModifiers::ALT) => {
                     self.doc_mut().anchor = Some(0);
                     self.doc_mut().cursor = self.doc().text.len_chars();
                 }

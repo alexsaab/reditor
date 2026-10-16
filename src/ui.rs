@@ -255,7 +255,7 @@ impl Renderer {
         let rail =
             Layout::horizontal([Constraint::Length(6), Constraint::Min(10)]).split(workspace);
         self.activity_bar(frame, app, rail[0]);
-        let columns = Layout::horizontal([
+        let mut constraints = vec![
             Constraint::Length(
                 app.studio
                     .explorer_width
@@ -263,10 +263,32 @@ impl Renderer {
                     .clamp(12, rail[1].width.saturating_sub(10).max(12)),
             ),
             Constraint::Min(10),
-        ])
-        .split(rail[1]);
+        ];
+        if app.studio.right_panel_visible && rail[1].width >= 50 {
+            let right_width = app
+                .studio
+                .right_panel_width
+                .unwrap_or(if rail[1].width >= 100 { 45 } else { 30 })
+                .clamp(20, rail[1].width.saturating_sub(35).max(20));
+            constraints.push(Constraint::Length(right_width));
+        }
+        let columns = Layout::horizontal(constraints).split(rail[1]);
         self.explorer(frame, app, columns[0]);
         self.editors(frame, app, columns[1]);
+        if app.studio.right_panel_visible && columns.len() > 2 {
+            self.agent_panel(frame, app, columns[2]);
+            self.resize_border(
+                Rect::new(
+                    columns[2].x.saturating_sub(1),
+                    workspace.y,
+                    2,
+                    workspace.height,
+                ),
+                workspace_ui::ResizeKind::Agent,
+                rail[1],
+                columns[2].width,
+            );
+        }
         self.resize_border(
             Rect::new(
                 columns[1].x.saturating_sub(1),
@@ -617,6 +639,7 @@ impl Renderer {
         );
         if !app.explorer_focus
             && !app.studio.terminal_focus
+            && !app.studio.right_terminal_focus
             && app.dialog.is_none()
             && row >= doc.scroll
             && row < end

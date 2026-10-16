@@ -38,6 +38,7 @@ pub enum Action {
     Diagram(usize),
     RemoteBrowse(String, String),
     RemoteOpen(String, String),
+    LaunchAgent(String),
 }
 #[derive(Clone)]
 pub struct Choice {
@@ -137,6 +138,11 @@ pub struct Studio {
     pub split_preview: bool,
     pub split_mermaid: bool,
     pub split_right_focus: bool,
+    pub right_panel_visible: bool,
+    pub right_panel_width: Option<u16>,
+    pub right_terminal: Option<TerminalSession>,
+    pub right_terminal_focus: bool,
+    pub right_agent_id: Option<String>,
     pub wrap_width: usize,
     pub lsp: Option<lsp::Client>,
     pub lsp_error: Option<String>,
@@ -190,6 +196,11 @@ impl Studio {
             split_preview: false,
             split_mermaid: false,
             split_right_focus: false,
+            right_panel_visible: false,
+            right_panel_width: None,
+            right_terminal: None,
+            right_terminal_focus: false,
+            right_agent_id: None,
             wrap_width: 80,
             lsp: None,
             lsp_error: None,
@@ -306,6 +317,12 @@ fn commands() -> &'static [(&'static str, &'static str)] {
         ("diagram.svg", "export_svg"),
         ("diagram.png", "export_png"),
         ("format", "format"),
+        ("agent.panel", "agent_panel"),
+        ("agent.select", "agent_select"),
+        ("agent.restart", "agent_restart"),
+        ("plugins.check", "plugins_check"),
+        ("layout.agent.grow", "agent_grow"),
+        ("layout.agent.shrink", "agent_shrink"),
     ]
 }
 impl App {
@@ -530,10 +547,87 @@ impl App {
             "layout.split.shrink" => {
                 self.studio.split_percent = self.studio.split_percent.saturating_sub(5).max(5);
             }
+            "layout.agent.grow" => {
+                self.studio.right_panel_width = Some(
+                    self.studio
+                        .right_panel_width
+                        .unwrap_or(45)
+                        .saturating_add(5),
+                );
+            }
+            "layout.agent.shrink" => {
+                self.studio.right_panel_width = Some(
+                    self.studio
+                        .right_panel_width
+                        .unwrap_or(45)
+                        .saturating_sub(5)
+                        .max(20),
+                );
+            }
             "layout.reset" => {
                 self.studio.explorer_width = None;
+                self.studio.right_panel_width = None;
                 self.studio.split_percent = 50;
                 self.studio.bottom_height = 12;
+            }
+            "agent.panel" => {
+                if self.studio.right_panel_visible {
+                    if self.studio.right_terminal_focus {
+                        self.studio.right_panel_visible = false;
+                        self.studio.right_terminal_focus = false;
+                    } else if self.studio.right_terminal.is_some() {
+                        self.studio.right_terminal_focus = true;
+                        self.studio.terminal_focus = false;
+                        self.explorer_focus = false;
+                    } else {
+                        self.studio.right_panel_visible = false;
+                    }
+                } else {
+                    self.studio.right_panel_visible = true;
+                    self.studio.terminal_focus = false;
+                    self.explorer_focus = false;
+                    if self.studio.right_terminal.is_none() {
+                        let agents = crate::agent::detect_agents();
+                        if let Some(agent) = agents.into_iter().find(|a| a.path.is_some()) {
+                            let _ = self.spawn_agent(agent.id);
+                        }
+                    }
+                    self.studio.right_terminal_focus = self.studio.right_terminal.is_some();
+                }
+            }
+            "agent.select" => {
+                let agents = crate::agent::detect_agents();
+                let items: Vec<Choice> = agents
+                    .into_iter()
+                    .map(|agent| {
+                        let status = if agent.path.is_some() {
+                            format!("✓ {} [installed]", agent.name)
+                        } else {
+                            format!("× {} [not in PATH]", agent.name)
+                        };
+                        Choice {
+                            label: status,
+                            action: Action::LaunchAgent(agent.id.to_string()),
+                        }
+                    })
+                    .collect();
+                self.select("agent_select", items);
+            }
+            "agent.restart" => {
+                if let Some(id) = self.studio.right_agent_id.clone() {
+                    self.spawn_agent(&id)?;
+                } else {
+                    let agents = crate::agent::detect_agents();
+                    if let Some(agent) = agents.into_iter().find(|a| a.path.is_some()) {
+                        self.spawn_agent(agent.id)?;
+                    } else {
+                        bail!("{}", self.i18n.t("agent_not_found"));
+                    }
+                }
+            }
+            "plugins.check" => {
+                let report = crate::agent::diagnostics(&self.root, &self.plugins);
+                self.text_panel("plugins_check", report);
             }
             "cargo.check" | "cargo.build" | "cargo.run" | "cargo.test" | "cargo.clippy" => {
                 self.cargo_task(command.trim_start_matches("cargo."))?
@@ -849,9 +943,30 @@ impl App {
             return Ok(true);
         }
         let control = key.modifiers.contains(KeyModifiers::CONTROL);
+        let alt = key.modifiers.contains(KeyModifiers::ALT);
         if (control && matches!(key.code, KeyCode::Char('`'))) || key.code == KeyCode::F(10) {
             self.command("terminal.toggle")?;
             return Ok(true);
+        }
+        if (control && matches!(key.code, KeyCode::Char('l') | KeyCode::Char('L')))
+            || (control && alt && matches!(key.code, KeyCode::Char('a') | KeyCode::Char('A')))
+        {
+            self.command("agent.panel")?;
+            return Ok(true);
+        }
+        if self.studio.right_terminal_focus && self.dialog.is_none() {
+            if key.code == KeyCode::Esc {
+                self.studio.right_terminal_focus = false;
+                return Ok(true);
+            }
+            if !(control && key.code == KeyCode::Char('q')) {
+                if let Some(terminal) = self.studio.right_terminal.as_mut() {
+                    terminal.key(key)?;
+                    return Ok(true);
+                } else {
+                    self.studio.right_terminal_focus = false;
+                }
+            }
         }
         if self.studio.terminal_focus && self.dialog.is_none() {
             if key.modifiers.contains(KeyModifiers::ALT)
@@ -910,6 +1025,8 @@ impl App {
             "Ctrl+F11" => Some("cargo.build"),
             "Ctrl+Shift+b" => Some("cargo.build"),
             "Ctrl+Shift+t" => Some("cargo.test"),
+            "Ctrl+Alt+a" => Some("agent.panel"),
+            "Ctrl+l" => Some("agent.panel"),
             _ => None,
         };
         if let Some(action) = action {
@@ -1112,7 +1229,31 @@ impl App {
                     self.dialog = Some(Dialog::Diagram);
                 }
             }
+            Action::LaunchAgent(id) => self.spawn_agent(&id)?,
         }
+        Ok(())
+    }
+    pub fn spawn_agent(&mut self, id: &str) -> Result<()> {
+        if let Some(mut old) = self.studio.right_terminal.take() {
+            old.stop();
+        }
+        let agents = crate::agent::detect_agents();
+        let info = agents
+            .into_iter()
+            .find(|a| a.id == id)
+            .context("Unknown agent")?;
+        let bin_path = info
+            .path
+            .context(format!("Agent binary '{}' not found in PATH", info.binary))?;
+        let bin_str = bin_path.to_string_lossy().into_owned();
+        let terminal =
+            TerminalSession::spawn(format!("Agent: {}", info.name), &self.root, &bin_str, &[])?;
+        self.studio.right_terminal = Some(terminal);
+        self.studio.right_agent_id = Some(id.to_string());
+        self.studio.right_panel_visible = true;
+        self.studio.right_terminal_focus = true;
+        self.studio.terminal_focus = false;
+        self.explorer_focus = false;
         Ok(())
     }
     fn panel_submit(&mut self, kind: &str, input: &str) -> Result<()> {
@@ -1594,6 +1735,12 @@ impl App {
         }
         for terminal in &mut self.studio.terminals {
             terminal.poll();
+        }
+        if let Some(terminal) = self.studio.right_terminal.as_mut() {
+            terminal.poll();
+            if terminal.exit.is_some() {
+                self.studio.right_terminal_focus = false;
+            }
         }
         if self.studio.git_job.is_none() && self.studio.last_git.elapsed() > Duration::from_secs(3)
         {
@@ -2126,6 +2273,43 @@ mod tests {
         app.apply_review()?;
         assert!(app.documents.iter().all(|d| d.text == "два"));
         assert_eq!(fs::read_to_string(b)?, "one");
+        Ok(())
+    }
+    #[test]
+    fn agent_panel_toggle_and_diagnostics_report() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let mut app = App::new(root.path().into(), Language::Ru, vec![])?;
+        assert!(!app.studio.right_panel_visible);
+
+        // Toggle panel on
+        app.command("agent.panel")?;
+        assert!(app.studio.right_panel_visible);
+        assert!(app.studio.right_terminal_focus);
+
+        // Grow and shrink panel
+        app.command("layout.agent.grow")?;
+        assert!(app.studio.right_panel_width.unwrap_or(0) >= 45);
+        app.command("layout.agent.shrink")?;
+        app.command("layout.reset")?;
+        assert_eq!(app.studio.right_panel_width, None);
+
+        // Toggle panel off when focused
+        app.command("agent.panel")?;
+        assert!(!app.studio.right_panel_visible);
+
+        // Open diagnostics panel
+        app.command("plugins.check")?;
+        assert!(app.studio.panel.is_some());
+        let panel = app.studio.panel.as_ref().unwrap();
+        assert!(panel.body.contains("AI Agents"));
+        assert!(panel.body.contains("Loaded Plugins"));
+
+        // Select agent menu
+        app.command("agent.select")?;
+        assert!(app.studio.panel.is_some());
+        let panel = app.studio.panel.as_ref().unwrap();
+        assert!(panel.items.iter().any(|i| i.label.contains("agy")));
+
         Ok(())
     }
 }

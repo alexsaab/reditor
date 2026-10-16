@@ -101,6 +101,12 @@ fn main() -> Result<()> {
     }
     let mut terminal = ratatui::init();
     let _guard = TerminalGuard;
+    let prev_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = execute!(io::stdout(), DisableBracketedPaste, DisableMouseCapture);
+        ratatui::restore();
+        prev_hook(info);
+    }));
     execute!(io::stdout(), EnableBracketedPaste, EnableMouseCapture)?;
     let mut renderer = Renderer::new();
     renderer.query_graphics();

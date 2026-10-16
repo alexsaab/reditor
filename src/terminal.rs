@@ -16,7 +16,7 @@ pub struct TerminalSession {
     pub output: String,
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
-    child: Box<dyn Child + Send + Sync>,
+    child: Option<Box<dyn Child + Send + Sync>>,
     receive: Receiver<Vec<u8>>,
     size: (u16, u16),
 }
@@ -56,7 +56,7 @@ impl TerminalSession {
             output: String::new(),
             master: pair.master,
             writer,
-            child,
+            child: Some(child),
             receive,
             size: (12, 80),
         })
@@ -81,7 +81,8 @@ impl TerminalSession {
             }
         }
         if self.exit.is_none()
-            && let Ok(Some(status)) = self.child.try_wait()
+            && let Some(child) = self.child.as_mut()
+            && let Ok(Some(status)) = child.try_wait()
         {
             self.exit = Some(status.to_string());
             self.exit_code = Some(status.exit_code());
@@ -188,17 +189,21 @@ impl TerminalSession {
             .set_scrollback(old.saturating_add_signed(lines as isize));
     }
     pub fn stop(&mut self) {
-        if self.exit.is_none() {
+        if let Some(mut child) = self.child.take() {
             #[cfg(unix)]
-            if let Some(pid) = self.child.process_id() {
+            if let Some(pid) = child.process_id() {
                 // The PTY child owns its own session/process group.
                 unsafe {
-                    libc::kill(-(pid as i32), libc::SIGTERM);
+                    libc::kill(-(pid as i32), libc::SIGKILL);
                 }
             }
-            let _ = self.child.kill();
-            let _ = self.child.wait();
-            self.poll();
+            let _ = child.kill();
+            std::thread::spawn(move || {
+                let _ = child.wait();
+            });
+            if self.exit.is_none() {
+                self.exit = Some("stopped".into());
+            }
         }
     }
 }

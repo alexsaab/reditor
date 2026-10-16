@@ -112,6 +112,8 @@ impl MouseController {
             }
             MouseEventKind::Down(MouseButton::Left) => {
                 self.dragging = None;
+                app.studio.terminal_focus = false;
+                app.studio.right_terminal_focus = false;
                 if let Some((_, menu)) = self
                     .areas
                     .menu_headers

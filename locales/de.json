@@ -195,5 +195,11 @@
   "folder_picker_empty": "Keine Unterordner vorhanden",
   "folder_picker_choose": "Diesen Ordner auswählen",
   "folder_picker_hint": "Enter öffnet einen Ordner · O wählt diesen Ordner · Esc bricht ab",
-  "menu_new_folder": "Neuer Ordner"
+  "menu_new_folder": "Neuer Ordner",
+  "agent_panel": "KI-Agentenbereich",
+  "agent_select": "KI-Agenten auswählen",
+  "agent_restart": "KI-Agenten neu starten",
+  "plugins_check": "Plugin- und Agentendiagnose",
+  "agent_grow": "Agentenbereich vergrößern",
+  "agent_shrink": "Agentenbereich verkleinern"
 }

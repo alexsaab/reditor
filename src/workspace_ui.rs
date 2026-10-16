@@ -16,6 +16,9 @@ pub(super) struct Areas {
     choices: Vec<(Rect, usize)>,
     secondary: Option<(usize, HitAreas)>,
     split_preview: Rect,
+    agent_panel: Rect,
+    agent_terminal: Rect,
+    activity_agent: Rect,
     resize: Vec<ResizeRegion>,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -23,6 +26,7 @@ pub(super) enum ResizeKind {
     Explorer,
     Split,
     Terminal,
+    Agent,
 }
 #[derive(Clone, Copy)]
 struct ResizeRegion {
@@ -53,7 +57,22 @@ impl Renderer {
             ),
             Rect::new(area.x + 2, area.y, 2, 1),
         );
-        let visible = usize::from(area.height.saturating_sub(2) / 2);
+        let agent_mark = Rect::new(area.x, area.y + 1, area.width - 1, 1);
+        self.studio_areas.activity_agent = agent_mark;
+        frame.render_widget(
+            Paragraph::new("AI").style(
+                Style::default()
+                    .fg(if app.studio.right_panel_visible {
+                        ACCENT
+                    } else {
+                        MUTED
+                    })
+                    .bg(PANEL)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Rect::new(area.x + 2, area.y + 1, 2, 1),
+        );
+        let visible = usize::from(area.height.saturating_sub(3) / 2);
         let count = app.plugins.plugins.len();
         app.studio.activity_scroll = app
             .studio
@@ -91,7 +110,7 @@ impl Renderer {
                     }
                 });
             let selected = app.studio.activity_plugin == Some(index);
-            let y = area.y + row as u16 * 2 + 1;
+            let y = area.y + row as u16 * 2 + 2;
             let hit = Rect::new(area.x, y, area.width - 1, 2);
             if selected {
                 frame.render_widget(
@@ -173,12 +192,15 @@ impl Renderer {
                     let region = drag.region;
                     let delta = if region.kind == ResizeKind::Terminal {
                         i32::from(drag.origin.y) - i32::from(point.y)
+                    } else if region.kind == ResizeKind::Agent {
+                        i32::from(drag.origin.x) - i32::from(point.x)
                     } else {
                         i32::from(point.x) - i32::from(drag.origin.x)
                     };
                     let (minimum, maximum) = match region.kind {
                         ResizeKind::Terminal => (5, region.bounds.height.saturating_sub(5)),
                         ResizeKind::Explorer => (12, region.bounds.width.saturating_sub(10)),
+                        ResizeKind::Agent => (20, region.bounds.width.saturating_sub(25)),
                         ResizeKind::Split => {
                             let min = 12.min(region.bounds.width / 2);
                             (min, region.bounds.width.saturating_sub(min))
@@ -190,6 +212,7 @@ impl Renderer {
                     match region.kind {
                         ResizeKind::Terminal => app.studio.bottom_height = size,
                         ResizeKind::Explorer => app.studio.explorer_width = Some(size),
+                        ResizeKind::Agent => app.studio.right_panel_width = Some(size),
                         ResizeKind::Split => {
                             app.studio.split_percent = ((u32::from(size) * 100
                                 + u32::from(region.bounds.width) / 2)
@@ -337,6 +360,92 @@ impl Renderer {
                     );
                 }
             }
+        }
+    }
+    pub(super) fn agent_panel(&mut self, frame: &mut Frame, app: &mut App, area: Rect) {
+        self.studio_areas.agent_panel = area;
+        let title = app.studio.right_agent_id.as_deref().unwrap_or("AI Agent");
+        let block = Block::bordered()
+            .title(format!(" 🤖 {title} · Ctrl+L / Esc "))
+            .border_style(Style::default().fg(if app.studio.right_terminal_focus {
+                ACCENT
+            } else {
+                MUTED
+            }));
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+        if inner.width < 10 || inner.height < 3 {
+            return;
+        }
+
+        let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).split(inner);
+
+        // Toolbar
+        let mut x = rows[0].x;
+        let buttons = [
+            ("[Select]", "agent.select"),
+            ("[Restart]", "agent.restart"),
+            ("[Diag]", "plugins.check"),
+            ("[×]", "agent.panel"),
+        ];
+        for (label, command) in buttons {
+            let width = (label.len() as u16).min(rows[0].right().saturating_sub(x));
+            if width == 0 {
+                break;
+            }
+            let hit = Rect::new(x, rows[0].y, width, 1);
+            frame.render_widget(
+                Paragraph::new(label).style(Style::default().fg(ACCENT).bg(PANEL)),
+                hit,
+            );
+            self.studio_areas.buttons.push((hit, command.into()));
+            x += width + 1;
+        }
+
+        self.studio_areas.agent_terminal = rows[1];
+        if let Some(terminal) = app.studio.right_terminal.as_mut() {
+            terminal.resize(rows[1].height, rows[1].width);
+            let screen = terminal.parser.screen();
+            for row in 0..rows[1].height {
+                for col in 0..rows[1].width {
+                    if let Some(cell) = screen.cell(row, col) {
+                        if cell.is_wide_continuation() {
+                            continue;
+                        }
+                        let mut style = Style::default()
+                            .fg(terminal_color(cell.fgcolor(), TEXT))
+                            .bg(terminal_color(cell.bgcolor(), BG));
+                        if cell.bold() {
+                            style = style.add_modifier(Modifier::BOLD);
+                        }
+                        if cell.inverse() {
+                            std::mem::swap(&mut style.fg, &mut style.bg);
+                        }
+                        frame.render_widget(
+                            Paragraph::new(cell.contents()).style(style),
+                            Rect::new(rows[1].x + col, rows[1].y + row, 1, 1),
+                        );
+                    }
+                }
+            }
+            if app.studio.right_terminal_focus && app.dialog.is_none() && !screen.hide_cursor() {
+                let (crow, ccol) = screen.cursor_position();
+                if crow < rows[1].height && ccol < rows[1].width {
+                    frame.set_cursor_position(Position::new(rows[1].x + ccol, rows[1].y + crow));
+                }
+            }
+        } else {
+            let agents = crate::agent::detect_agents();
+            let mut text = String::from("AI Agents in PATH:\n");
+            for a in &agents {
+                if a.path.is_some() {
+                    text.push_str(&format!("  ✓ {} [ready]\n", a.name));
+                } else {
+                    text.push_str(&format!("  × {} [not found]\n", a.name));
+                }
+            }
+            text.push_str("\nClick [Select] to choose an agent.\nRun `agent.select` in palette (Ctrl+G).\nOr install `agy`, `claude`, or `codex`.");
+            frame.render_widget(Paragraph::new(text).wrap(Wrap { trim: false }), rows[1]);
         }
     }
     pub(super) fn bottom(&mut self, frame: &mut Frame, app: &mut App, area: Rect) {
@@ -657,6 +766,11 @@ impl Renderer {
                     if self.studio_areas.activity_explorer.contains(point) {
                         app.explorer_focus = true;
                         app.studio.terminal_focus = false;
+                        app.studio.right_terminal_focus = false;
+                    } else if self.studio_areas.activity_agent.contains(point) {
+                        if let Err(error) = app.command("agent.panel") {
+                            app.error(error);
+                        }
                     } else if self.studio_areas.activity_settings.contains(point) {
                         if let Err(error) = app.command("settings") {
                             app.error(error);
@@ -713,10 +827,34 @@ impl Renderer {
                 return true;
             }
         }
+        if self.studio_areas.agent_terminal.contains(point) {
+            match event.kind {
+                MouseEventKind::Down(MouseButton::Left) => {
+                    if app.studio.right_terminal.is_some() {
+                        app.studio.right_terminal_focus = true;
+                    }
+                    app.studio.terminal_focus = false;
+                    app.explorer_focus = false;
+                }
+                MouseEventKind::ScrollUp => {
+                    if let Some(t) = app.studio.right_terminal.as_mut() {
+                        t.scroll(3);
+                    }
+                }
+                MouseEventKind::ScrollDown => {
+                    if let Some(t) = app.studio.right_terminal.as_mut() {
+                        t.scroll(-3);
+                    }
+                }
+                _ => {}
+            }
+            return true;
+        }
         if self.studio_areas.terminal.contains(point) {
             match event.kind {
                 MouseEventKind::Down(MouseButton::Left) => {
                     app.studio.terminal_focus = true;
+                    app.studio.right_terminal_focus = false;
                     app.explorer_focus = false;
                 }
                 MouseEventKind::ScrollUp => {
@@ -769,6 +907,7 @@ impl Renderer {
         }
         if matches!(event.kind, MouseEventKind::Down(MouseButton::Left)) {
             app.studio.terminal_focus = false;
+            app.studio.right_terminal_focus = false;
         }
         false
     }
@@ -1061,6 +1200,7 @@ mod tests {
                 ResizeKind::Terminal => assert_eq!(limited.size, 5),
                 ResizeKind::Explorer => assert_eq!(limited.size, limited.bounds.width - 10),
                 ResizeKind::Split => assert!(limited.size <= limited.bounds.width - 12),
+                ResizeKind::Agent => assert!(limited.size <= limited.bounds.width - 25),
             }
             renderer.mouse(
                 &mut app,
@@ -1263,6 +1403,48 @@ mod tests {
         assert_eq!(app.doc().text.to_string(), "editor");
         app.command("terminal.close")?;
         assert!(!app.studio.bottom_visible);
+        Ok(())
+    }
+    #[test]
+    fn agent_panel_ui_renders_and_toggles_with_activity_bar() -> anyhow::Result<()> {
+        let root = tempfile::tempdir()?;
+        let mut app = App::new(root.path().into(), Language::En, vec![])?;
+        let mut terminal = Terminal::new(TestBackend::new(120, 35))?;
+        let mut renderer = Renderer::new();
+
+        terminal.draw(|f| renderer.draw(f, &mut app))?;
+        assert!(!app.studio.right_panel_visible);
+        assert!(renderer.studio_areas.activity_agent.width > 0);
+
+        // Click AI in activity bar toggles right panel on
+        let agent_icon = renderer.studio_areas.activity_agent;
+        renderer.mouse(
+            &mut app,
+            mouse_event(
+                MouseEventKind::Down(MouseButton::Left),
+                agent_icon.x,
+                agent_icon.y,
+            ),
+        );
+        assert!(app.studio.right_panel_visible);
+        assert!(app.studio.right_terminal_focus);
+
+        // Render with right panel open
+        terminal.draw(|f| renderer.draw(f, &mut app))?;
+        assert!(renderer.studio_areas.agent_panel.width > 0);
+        assert!(renderer.studio_areas.agent_terminal.height > 0);
+
+        // Click again in activity bar toggles right panel off
+        renderer.mouse(
+            &mut app,
+            mouse_event(
+                MouseEventKind::Down(MouseButton::Left),
+                agent_icon.x,
+                agent_icon.y,
+            ),
+        );
+        assert!(!app.studio.right_panel_visible);
+
         Ok(())
     }
 }

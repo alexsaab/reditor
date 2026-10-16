@@ -195,5 +195,11 @@
   "folder_picker_empty": "Esta carpeta no contiene subcarpetas",
   "folder_picker_choose": "Elegir esta carpeta",
   "folder_picker_hint": "Enter abre una carpeta · O elige esta carpeta · Esc cancela",
-  "menu_new_folder": "Nueva carpeta"
+  "menu_new_folder": "Nueva carpeta",
+  "agent_panel": "Panel de agente IA",
+  "agent_select": "Seleccionar agente IA",
+  "agent_restart": "Reiniciar agente IA",
+  "plugins_check": "Diagnóstico de plugins y agentes",
+  "agent_grow": "Agrandar panel de agente",
+  "agent_shrink": "Reducir panel de agente"
 }

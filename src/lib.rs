@@ -15,6 +15,7 @@ pub mod terminal;
 pub mod ui;
 pub mod workspace;
 
+pub mod agent;
 pub mod formatter;
 mod plugin_host;
 pub mod proofreader;
