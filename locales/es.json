@@ -200,6 +200,7 @@
   "agent_select": "Seleccionar agente IA",
   "agent_restart": "Reiniciar agente IA",
   "plugins_check": "Diagnóstico de plugins y agentes",
+  "plugins_install_all": "Instalar y activar todos los plugins",
   "agent_grow": "Agrandar panel de agente",
   "agent_shrink": "Reducir panel de agente"
 }

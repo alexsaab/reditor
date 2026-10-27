@@ -200,6 +200,7 @@
   "agent_select": "KI-Agenten auswählen",
   "agent_restart": "KI-Agenten neu starten",
   "plugins_check": "Plugin- und Agentendiagnose",
+  "plugins_install_all": "Alle Plugins installieren und aktivieren",
   "agent_grow": "Agentenbereich vergrößern",
   "agent_shrink": "Agentenbereich verkleinern"
 }

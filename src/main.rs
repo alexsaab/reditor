@@ -3,7 +3,7 @@ use clap::Parser;
 use crossterm::{
     event::{
         self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-        Event, KeyEventKind,
+        Event, KeyEventKind, MouseEventKind,
     },
     execute,
 };
@@ -11,7 +11,7 @@ use reditor::{app::App, i18n::Language, ui::Renderer};
 use std::{
     io::{self, IsTerminal},
     path::PathBuf,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 #[derive(Parser)]
@@ -32,9 +32,12 @@ struct Cli {
     /// Explicitly load trusted plugin directories; may be repeated
     #[arg(long = "plugins")]
     plugins: Vec<PathBuf>,
-    /// Install a bundled Lua plugin (php, remote, git, formatter, proofreader), then exit
+    /// Install a bundled plugin (all, php, remote, git, formatter, proofreader, trim, header-js, uppercase-ts), then exit
     #[arg(long = "install-plugin")]
     install_plugins: Vec<String>,
+    /// Install all bundled plugins and exit
+    #[arg(long = "install-all-plugins")]
+    install_all_plugins: bool,
     /// Installation scope: project or user (~/.reditor)
     #[arg(long, default_value = "project", value_parser = ["project", "user"])]
     scope: String,
@@ -69,17 +72,23 @@ fn main() -> Result<()> {
             .next()
             .unwrap_or(cwd.clone())
     };
-    if !cli.install_plugins.is_empty() {
+    if cli.install_all_plugins || !cli.install_plugins.is_empty() {
         let directory = if cli.scope == "user" {
             reditor::settings::user_dir()?
         } else {
             root.join(".reditor")
         };
-        for name in cli.install_plugins {
-            println!(
-                "{}",
-                reditor::settings::install(&directory, &name)?.display()
-            );
+        if cli.install_all_plugins || cli.install_plugins.iter().any(|name| name == "all") {
+            for path in reditor::settings::install_all(&directory)? {
+                println!("{}", path.display());
+            }
+        } else {
+            for name in cli.install_plugins {
+                println!(
+                    "{}",
+                    reditor::settings::install(&directory, &name)?.display()
+                );
+            }
         }
         return Ok(());
     }
@@ -110,23 +119,58 @@ fn main() -> Result<()> {
     execute!(io::stdout(), EnableBracketedPaste, EnableMouseCapture)?;
     let mut renderer = Renderer::new();
     renderer.query_graphics();
+    let mut needs_draw = true;
+    let mut last_draw = Instant::now();
     while !app.quit {
-        app.poll_build();
-        app.poll_diagram();
-        app.poll_studio();
-        terminal.draw(|frame| renderer.draw(frame, &mut app))?;
-        if event::poll(Duration::from_millis(50))? {
-            match event::read()? {
-                Event::Key(key) if key.kind != KeyEventKind::Release => {
-                    renderer.follow_cursor();
-                    app.key(key);
+        if needs_draw || last_draw.elapsed() >= Duration::from_millis(50) {
+            app.poll_build();
+            app.poll_diagram();
+            app.poll_studio();
+            terminal.draw(|frame| renderer.draw(frame, &mut app))?;
+            needs_draw = false;
+            last_draw = Instant::now();
+        }
+        let timeout = Duration::from_millis(50).saturating_sub(last_draw.elapsed());
+        if event::poll(timeout)? {
+            loop {
+                match event::read()? {
+                    Event::Key(key) if key.kind != KeyEventKind::Release => {
+                        renderer.follow_cursor();
+                        app.key(key);
+                        needs_draw = true;
+                        break;
+                    }
+                    Event::Paste(text) => {
+                        renderer.follow_cursor();
+                        app.paste(&text);
+                        needs_draw = true;
+                        break;
+                    }
+                    Event::Mouse(mouse) => match mouse.kind {
+                        MouseEventKind::Moved => {}
+                        MouseEventKind::Drag(_)
+                        | MouseEventKind::ScrollUp
+                        | MouseEventKind::ScrollDown
+                        | MouseEventKind::ScrollLeft
+                        | MouseEventKind::ScrollRight => {
+                            renderer.mouse(&mut app, mouse);
+                            needs_draw = true;
+                        }
+                        _ => {
+                            renderer.mouse(&mut app, mouse);
+                            needs_draw = true;
+                            break;
+                        }
+                    },
+                    Event::Resize(_, _) => {
+                        needs_draw = true;
+                        break;
+                    }
+                    _ => {}
                 }
-                Event::Paste(text) => {
-                    renderer.follow_cursor();
-                    app.paste(&text);
+                if app.quit || !event::poll(Duration::ZERO)? {
+                    break;
                 }
-                Event::Mouse(mouse) => renderer.mouse(&mut app, mouse),
-                _ => {}
             }
         }
     }

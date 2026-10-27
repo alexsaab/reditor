@@ -200,6 +200,7 @@
   "agent_select": "Select AI Agent",
   "agent_restart": "Restart AI Agent",
   "plugins_check": "Plugin & Agent Diagnostics",
+  "plugins_install_all": "Install & Activate All Plugins",
   "agent_grow": "Grow AI agent panel",
   "agent_shrink": "Shrink AI agent panel"
 }

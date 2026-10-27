@@ -158,6 +158,7 @@ pub struct Studio {
     pub project_replace: bool,
     job: Option<Job>,
     last_session: Instant,
+    last_session_state: Option<u64>,
     last_lsp: Instant,
     last_diagram: Instant,
     diagram_revision: u64,
@@ -216,6 +217,7 @@ impl Studio {
             project_replace: false,
             job: None,
             last_session: Instant::now(),
+            last_session_state: None,
             last_lsp: Instant::now(),
             last_diagram: Instant::now(),
             diagram_revision: 0,
@@ -321,9 +323,28 @@ fn commands() -> &'static [(&'static str, &'static str)] {
         ("agent.select", "agent_select"),
         ("agent.restart", "agent_restart"),
         ("plugins.check", "plugins_check"),
+        ("plugins.install_all", "plugins_install_all"),
         ("layout.agent.grow", "agent_grow"),
         ("layout.agent.shrink", "agent_shrink"),
     ]
+}
+fn session_fingerprint(documents: &[Document], active: usize) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    active.hash(&mut hasher);
+    for d in documents {
+        d.id.hash(&mut hasher);
+        d.revision.hash(&mut hasher);
+        d.path.hash(&mut hasher);
+        d.dirty().hash(&mut hasher);
+        d.cursor.hash(&mut hasher);
+        d.scroll.hash(&mut hasher);
+        d.horizontal.hash(&mut hasher);
+        d.preview.hash(&mut hasher);
+        d.preview_scroll.hash(&mut hasher);
+        d.wrap_scroll.hash(&mut hasher);
+    }
+    hasher.finish()
 }
 impl App {
     fn studio_panel(&mut self, title: String, mode: PanelMode, body: String, items: Vec<Choice>) {
@@ -628,6 +649,18 @@ impl App {
             "plugins.check" => {
                 let report = crate::agent::diagnostics(&self.root, &self.plugins);
                 self.text_panel("plugins_check", report);
+            }
+            "plugins.install_all" => {
+                let user_dir = crate::settings::user_dir()?;
+                crate::settings::install_all(&user_dir)?;
+                self.plugin_dirs = crate::settings::plugin_dirs(&self.root, &self.plugin_dirs)?;
+                let (plugins, errors) = crate::plugins::PluginManager::load(&self.plugin_dirs);
+                self.plugins = plugins;
+                if errors.is_empty() {
+                    self.message("plugins_loaded");
+                } else {
+                    bail!("{}", errors.join("; "));
+                }
             }
             "cargo.check" | "cargo.build" | "cargo.run" | "cargo.test" | "cargo.clippy" => {
                 self.cargo_task(command.trim_start_matches("cargo."))?
@@ -1761,8 +1794,15 @@ impl App {
         }
         if self.studio.last_session.elapsed() > Duration::from_secs(2) {
             self.studio.last_session = Instant::now();
-            if let Err(e) = session::save(&self.root, &self.documents, self.active) {
-                self.error(e);
+            let fingerprint = session_fingerprint(&self.documents, self.active);
+            if self.studio.last_session_state != Some(fingerprint)
+                || !self.root.join(".reditor/session.json").exists()
+            {
+                if let Err(e) = session::save(&self.root, &self.documents, self.active) {
+                    self.error(e);
+                } else {
+                    self.studio.last_session_state = Some(fingerprint);
+                }
             }
         }
         if !self.studio.lsp_attempted

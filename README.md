@@ -18,10 +18,18 @@ cargo run --release -- src/main.rs README.md --lang de
 cargo run --release -- --workspace /path/to/project --lang es
 ```
 
-Установка бинарного файла:
+Установка бинарного файла и всех плагинов одной командой:
+
+```sh
+./install.sh
+# или: make install
+```
+
+Либо вручную через Cargo:
 
 ```sh
 cargo install --path . --locked
+reditor --install-all-plugins --scope user
 reditor /path/to/project --lang en
 ```
 
@@ -85,10 +93,12 @@ reditor /path/to/project --lang en
 
 ## PHP, Git и удалённые файлы — плагины на Lua
 
-Встроенный установщик содержит плагины `php`, `git`, `remote` (FTP, SFTP и FTPS) и `formatter`. Их исходники находятся в [bundled](bundled); устанавливаются копии, которые можно редактировать.
+Встроенный установщик содержит плагины `php`, `git`, `remote` (FTP, SFTP и FTPS), `formatter`, `proofreader`, а также `trim`, `header-js` и `uppercase-ts`. Их исходники находятся в [bundled](bundled) и [plugins](plugins); устанавливаются копии, которые можно редактировать.
 
 ```sh
-./target/release/reditor --install-plugin php --install-plugin git --install-plugin remote --install-plugin formatter --scope user
+reditor --install-all-plugins --scope user
+# или по отдельности:
+./target/release/reditor --install-plugin php --install-plugin git --install-plugin remote --install-plugin formatter --install-plugin proofreader --scope user
 ```
 
 Плагины пользователя загружаются из `~/.reditor/plugins`. Для установки только в текущий проект замените `--scope user` на `--scope project`. Настройки пользователя хранятся в `~/.reditor/config.toml`, подключения — в `~/.reditor/connections.toml`; проектные файлы в `.reditor` переопределяют отдельные поля. `REDITOR_USER_DIR` меняет общий каталог. Существующие плагины и настройки установщик не перезаписывает.

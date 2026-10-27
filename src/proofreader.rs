@@ -545,6 +545,8 @@ impl App {
         {
             return;
         }
+        self.studio.proofread_requested = Some(key);
+        let document = &self.documents[self.active];
         let Some(path) = document.path.as_ref() else {
             return;
         };
@@ -571,7 +573,6 @@ impl App {
         }
         let root = self.root.clone();
         let (id, revision) = key;
-        self.studio.proofread_requested = Some(key);
         let (send, receive) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let result =

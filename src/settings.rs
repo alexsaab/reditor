@@ -122,30 +122,61 @@ pub fn project_config(config: &Config) -> Result<String> {
     let overlay = differences(&value, &base).unwrap_or(toml::Value::Table(Default::default()));
     Ok(toml::to_string_pretty(&overlay)?)
 }
+pub const BUNDLED_PLUGINS: &[&str] = &[
+    "php",
+    "remote",
+    "git",
+    "formatter",
+    "proofreader",
+    "trim",
+    "header-js",
+    "uppercase-ts",
+];
+
 pub fn install(dir: &Path, name: &str) -> Result<PathBuf> {
-    let (manifest, source) = match name {
+    let (manifest, entry_name, source) = match name {
         "php" => (
             include_str!("../bundled/php/plugin.toml"),
+            "main.lua",
             include_str!("../bundled/php/main.lua"),
         ),
         "remote" => (
             include_str!("../bundled/remote/plugin.toml"),
+            "main.lua",
             include_str!("../bundled/remote/main.lua"),
         ),
         "git" => (
             include_str!("../bundled/git/plugin.toml"),
+            "main.lua",
             include_str!("../bundled/git/main.lua"),
         ),
         "formatter" => (
             include_str!("../bundled/formatter/plugin.toml"),
+            "main.lua",
             include_str!("../bundled/formatter/main.lua"),
         ),
         "proofreader" => (
             include_str!("../bundled/proofreader/plugin.toml"),
+            "main.lua",
             include_str!("../bundled/proofreader/main.lua"),
         ),
+        "trim" => (
+            include_str!("../plugins/trim/plugin.toml"),
+            "main.lua",
+            include_str!("../plugins/trim/main.lua"),
+        ),
+        "header-js" => (
+            include_str!("../plugins/header-js/plugin.toml"),
+            "main.js",
+            include_str!("../plugins/header-js/main.js"),
+        ),
+        "uppercase-ts" => (
+            include_str!("../plugins/uppercase-ts/plugin.toml"),
+            "main.ts",
+            include_str!("../plugins/uppercase-ts/main.ts"),
+        ),
         _ => bail!(
-            "Unknown bundled plugin: {name}; expected php, remote, git, formatter or proofreader"
+            "Unknown bundled plugin: {name}; expected all, php, remote, git, formatter, proofreader, trim, header-js or uppercase-ts"
         ),
     };
     let target = dir.join("plugins").join(name);
@@ -156,7 +187,7 @@ pub fn install(dir: &Path, name: &str) -> Result<PathBuf> {
     fs::create_dir_all(parent)?;
     let temporary = tempfile::tempdir_in(parent)?;
     fs::write(temporary.path().join("plugin.toml"), manifest)?;
-    fs::write(temporary.path().join("main.lua"), source)?;
+    fs::write(temporary.path().join(entry_name), source)?;
     fs::rename(temporary.path(), &target)?;
     let config = dir.join("config.toml");
     if !config.exists() {
@@ -172,6 +203,19 @@ pub fn install(dir: &Path, name: &str) -> Result<PathBuf> {
         )?;
     }
     Ok(target)
+}
+
+pub fn install_all(dir: &Path) -> Result<Vec<PathBuf>> {
+    let mut installed = Vec::with_capacity(BUNDLED_PLUGINS.len());
+    for &name in BUNDLED_PLUGINS {
+        let target = dir.join("plugins").join(name);
+        if target.exists() {
+            installed.push(target);
+        } else {
+            installed.push(install(dir, name)?);
+        }
+    }
+    Ok(installed)
 }
 #[cfg(test)]
 mod tests {
@@ -210,6 +254,18 @@ mod tests {
         assert_eq!(config.plugin_settings["php"]["port"], 8000);
         assert_eq!(config.plugin_settings["php"]["php_binary"], "custom-php");
         assert_eq!(config.keybindings["Alt+x"], "files");
+        Ok(())
+    }
+    #[test]
+    fn install_all_installs_and_loads_every_plugin() -> Result<()> {
+        let user = tempfile::tempdir()?;
+        let paths = install_all(user.path())?;
+        assert_eq!(paths.len(), BUNDLED_PLUGINS.len());
+        let again = install_all(user.path())?;
+        assert_eq!(again, paths);
+        let (manager, errors) = crate::plugins::PluginManager::load(&[user.path().join("plugins")]);
+        assert!(errors.is_empty(), "{errors:?}");
+        assert_eq!(manager.plugins.len(), BUNDLED_PLUGINS.len());
         Ok(())
     }
 }
