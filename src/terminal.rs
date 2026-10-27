@@ -14,6 +14,8 @@ pub struct TerminalSession {
     pub exit: Option<String>,
     pub exit_code: Option<u32>,
     pub output: String,
+    /// Mouse selection on the visible screen: (anchor, head) as (row, col).
+    pub selection: Option<((u16, u16), (u16, u16))>,
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     child: Option<Box<dyn Child + Send + Sync>>,
@@ -54,6 +56,7 @@ impl TerminalSession {
             exit: None,
             exit_code: None,
             output: String::new(),
+            selection: None,
             master: pair.master,
             writer,
             child: Some(child),
@@ -102,6 +105,7 @@ impl TerminalSession {
         }
     }
     pub fn write(&mut self, bytes: &[u8]) -> Result<()> {
+        self.selection = None;
         self.parser.screen_mut().set_scrollback(0);
         self.writer.write_all(bytes)?;
         self.writer.flush()?;
@@ -187,6 +191,36 @@ impl TerminalSession {
         self.parser
             .screen_mut()
             .set_scrollback(old.saturating_add_signed(lines as isize));
+        if self.parser.screen().scrollback() != old {
+            self.selection = None;
+        }
+    }
+    pub fn select(&mut self, row: u16, col: u16, extend: bool) {
+        let (rows, cols) = self.parser.screen().size();
+        let head = (
+            row.min(rows.saturating_sub(1)),
+            col.min(cols.saturating_sub(1)),
+        );
+        self.selection = match self.selection {
+            Some((anchor, _)) if extend => Some((anchor, head)),
+            _ => Some((head, head)),
+        };
+    }
+    fn selection_range(&self) -> Option<((u16, u16), (u16, u16))> {
+        let (anchor, head) = self.selection?;
+        (anchor != head).then(|| (anchor.min(head), anchor.max(head)))
+    }
+    pub fn selected(&self, row: u16, col: u16) -> bool {
+        self.selection_range()
+            .is_some_and(|(start, end)| (row, col) >= start && (row, col) <= end)
+    }
+    pub fn selected_text(&self) -> Option<String> {
+        let (start, end) = self.selection_range()?;
+        let text = self
+            .parser
+            .screen()
+            .contents_between(start.0, start.1, end.0, end.1 + 1);
+        (!text.is_empty()).then_some(text)
     }
     pub fn stop(&mut self) {
         if let Some(mut child) = self.child.take() {
@@ -239,6 +273,23 @@ mod tests {
         terminal.poll();
         assert!(terminal.parser.screen().contents().contains("Привет Rust"));
         assert!(terminal.exit.is_some());
+        Ok(())
+    }
+    #[test]
+    #[cfg(unix)]
+    fn mouse_selection_copies_visible_text() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let mut terminal = TerminalSession::spawn("test".into(), root.path(), "/bin/sh", &[])?;
+        terminal.parser.process(b"first line\r\nsecond");
+        terminal.select(0, 6, false);
+        assert_eq!(terminal.selected_text(), None);
+        terminal.select(1, 2, true);
+        assert!(terminal.selected(0, 8) && !terminal.selected(1, 3));
+        assert_eq!(terminal.selected_text().as_deref(), Some("line\nsec"));
+        terminal.scroll(0);
+        assert!(terminal.selection.is_some());
+        terminal.write(b"")?;
+        assert!(terminal.selection.is_none());
         Ok(())
     }
 }

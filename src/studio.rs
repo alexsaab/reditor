@@ -970,6 +970,24 @@ impl App {
         }
         Ok(())
     }
+    /// Copies the focused terminal's mouse selection. Without Shift (terminals that
+    /// cannot report Ctrl+Shift+C send plain Ctrl+C) it only acts on a selection, so
+    /// Ctrl+C still interrupts the process otherwise.
+    fn copy_terminal_selection(&mut self, shift: bool) -> bool {
+        let terminal = if self.studio.right_terminal_focus {
+            self.studio.right_terminal.as_mut()
+        } else {
+            self.studio.terminal_mut()
+        };
+        let Some(text) = terminal.and_then(|t| t.selected_text()) else {
+            return shift;
+        };
+        match self.copy_text(text) {
+            Ok(()) => self.message("terminal_copied"),
+            Err(error) => self.error(error),
+        }
+        true
+    }
     pub fn studio_key(&mut self, key: KeyEvent) -> Result<bool> {
         if matches!(self.dialog, Some(Dialog::Workbench)) {
             self.panel_key(key)?;
@@ -985,6 +1003,14 @@ impl App {
             || (control && alt && matches!(key.code, KeyCode::Char('a') | KeyCode::Char('A')))
         {
             self.command("agent.panel")?;
+            return Ok(true);
+        }
+        if (self.studio.terminal_focus || self.studio.right_terminal_focus)
+            && self.dialog.is_none()
+            && control
+            && matches!(key.code, KeyCode::Char('c') | KeyCode::Char('C'))
+            && self.copy_terminal_selection(key.modifiers.contains(KeyModifiers::SHIFT))
+        {
             return Ok(true);
         }
         if self.studio.right_terminal_focus && self.dialog.is_none() {
@@ -2182,6 +2208,17 @@ pub fn shell_arguments(text: &str) -> Result<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[cfg(unix)]
+    fn ctrl_c_copies_only_with_terminal_selection() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let mut app = App::new(root.path().into(), Language::En, vec![])?;
+        let terminal = TerminalSession::spawn("test".into(), root.path(), "/bin/sh", &[])?;
+        app.push_terminal(terminal);
+        assert!(!app.copy_terminal_selection(false));
+        assert!(app.copy_terminal_selection(true));
+        Ok(())
+    }
     #[test]
     fn editor_shortcuts_open_files_commands_and_projects() -> Result<()> {
         let root = tempfile::tempdir()?;

@@ -421,6 +421,9 @@ impl Renderer {
                         if cell.inverse() {
                             std::mem::swap(&mut style.fg, &mut style.bg);
                         }
+                        if terminal.selected(row, col) {
+                            style = style.bg(TERMINAL_SELECTION);
+                        }
                         frame.render_widget(
                             Paragraph::new(cell.contents()).style(style),
                             Rect::new(rows[1].x + col, rows[1].y + row, 1, 1),
@@ -571,6 +574,11 @@ impl Renderer {
                         if cell.inverse() {
                             style = style.add_modifier(Modifier::REVERSED);
                         }
+                        if terminal.selected(row, col) {
+                            style = style
+                                .bg(TERMINAL_SELECTION)
+                                .remove_modifier(Modifier::REVERSED);
+                        }
                         let contents = cell.contents();
                         frame.buffer_mut().set_stringn(
                             rows[2].x + col,
@@ -709,11 +717,78 @@ impl Renderer {
             ));
         }
     }
+    fn terminal_select_mouse(&mut self, app: &mut App, event: MouseEvent, point: Position) -> bool {
+        let right = match event.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                self.terminal_select = None;
+                if self.studio_areas.agent_terminal.contains(point)
+                    && app.studio.right_terminal.is_some()
+                {
+                    app.studio.right_terminal_focus = true;
+                    app.studio.terminal_focus = false;
+                    app.explorer_focus = false;
+                    true
+                } else if self.studio_areas.terminal.contains(point)
+                    && !app.studio.bottom_plugin
+                    && app.studio.terminal_mut().is_some()
+                {
+                    app.studio.terminal_focus = true;
+                    app.studio.right_terminal_focus = false;
+                    app.explorer_focus = false;
+                    false
+                } else {
+                    return false;
+                }
+            }
+            MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left) => {
+                match self.terminal_select {
+                    Some(right) => right,
+                    None => return false,
+                }
+            }
+            _ => return false,
+        };
+        let area = if right {
+            self.studio_areas.agent_terminal
+        } else {
+            self.studio_areas.terminal
+        };
+        let terminal = if right {
+            app.studio.right_terminal.as_mut()
+        } else {
+            app.studio.terminal_mut()
+        };
+        let Some(terminal) = terminal else {
+            self.terminal_select = None;
+            return true;
+        };
+        let row = point.y.saturating_sub(area.y);
+        let col = point.x.saturating_sub(area.x);
+        match event.kind {
+            MouseEventKind::Down(_) => {
+                terminal.select(row, col, false);
+                self.terminal_select = Some(right);
+            }
+            MouseEventKind::Drag(_) => terminal.select(row, col, true),
+            _ => {
+                self.terminal_select = None;
+                if let Some(text) = terminal.selected_text() {
+                    match app.copy_text(text) {
+                        Ok(()) => app.message("terminal_copied"),
+                        Err(error) => app.error(error),
+                    }
+                }
+            }
+        }
+        true
+    }
     pub(super) fn studio_mouse(&mut self, app: &mut App, event: MouseEvent) -> bool {
         let point = Position::new(event.column, event.row);
         if app.dialog.is_some() {
             self.resize_drag = None;
-        } else if self.resize_mouse(app, event, point) {
+        } else if self.resize_mouse(app, event, point)
+            || self.terminal_select_mouse(app, event, point)
+        {
             return true;
         }
         if matches!(app.dialog, Some(Dialog::Workbench)) {
@@ -1056,6 +1131,7 @@ impl Renderer {
         }
     }
 }
+const TERMINAL_SELECTION: Color = Color::Rgb(55, 83, 112);
 fn terminal_color(color: vt100::Color, default: Color) -> Color {
     match color {
         vt100::Color::Default => default,

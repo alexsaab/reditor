@@ -972,7 +972,11 @@ impl App {
         } else {
             path.to_owned()
         };
-        let text = value.to_string_lossy().into_owned();
+        self.copy_text(value.to_string_lossy().into_owned())?;
+        self.message("path_copied");
+        Ok(())
+    }
+    pub(crate) fn copy_text(&mut self, text: String) -> Result<()> {
         self.clipboard = text.clone();
         if self.system_clipboard.is_none() {
             self.system_clipboard = arboard::Clipboard::new().ok();
@@ -982,7 +986,6 @@ impl App {
             .as_mut()
             .context("System clipboard is unavailable")?;
         clipboard.set_text(text)?;
-        self.message("path_copied");
         Ok(())
     }
     fn dialog_key(&mut self, key: KeyEvent) -> Result<()> {

@@ -53,6 +53,8 @@ pub struct Renderer {
     diagram_image: Option<Protocol>,
     studio_areas: workspace_ui::Areas,
     resize_drag: Option<workspace_ui::ResizeDrag>,
+    /// Terminal being mouse-selected: `false` is the bottom panel, `true` the agent panel.
+    terminal_select: Option<bool>,
     resize_viewport: Rect,
     theme: String,
 }
@@ -77,6 +79,7 @@ impl Renderer {
             diagram_image: None,
             studio_areas: workspace_ui::Areas::default(),
             resize_drag: None,
+            terminal_select: None,
             resize_viewport: Rect::default(),
             theme: String::new(),
         }
